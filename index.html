@@ -363,9 +363,21 @@ async function captureSelected(){
     URL.revokeObjectURL(txtUrl);
     // — save + share —
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    doDownload(pngBlob);
-    showToast('✅ Saved to Downloads');
-    await doShare(pngBlob);
+    // mobile: share directly (skip download); desktop / fallback: save to Downloads
+    const file = new File([pngBlob], 'selected-territories.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      showToast('Opening share…');
+      try {
+        await navigator.share({files:[file], title:'Selected Territories'});
+        showToast('✅ Shared');
+      } catch(e){
+        doDownload(pngBlob);
+        showToast('✅ Saved to Downloads');
+      }
+    } else {
+      doDownload(pngBlob);
+      showToast('✅ Saved to Downloads');
+    }
   } catch(err){
     console.error(err);
     showToast('Capture failed — try again');
