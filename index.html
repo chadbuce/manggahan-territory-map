@@ -1,0 +1,427 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Manggahan Congregation Territory Map</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; font-family:Segoe UI, Roboto, sans-serif; }
+body { background:#f5f5f5; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+header { background:#2c3e50; color:#fff; padding:10px 12px; flex-shrink:0; }
+header h1 { font-size:0.95rem; font-weight:600; }
+header p { font-size:0.7rem; opacity:.8; margin-top:2px; }
+.tabs { display:flex; background:#fff; border-bottom:1px solid #ddd; flex-shrink:0; }
+.tab { flex:1; padding:10px 6px; text-align:center; font-weight:600; cursor:pointer; border-bottom:3px solid transparent; font-size:0.85rem; }
+.tab.active { border-bottom-color:#27ae60; color:#27ae60; background:#f0f8f4; }
+.map-container { flex:1; overflow:hidden; position:relative; background:#e9e9e9; }
+.map-viewport { width:100%; height:100%; overflow:hidden; cursor:grab; }
+.map-viewport:active { cursor:grabbing; }
+.map-wrapper { position:absolute; transform-origin:center center; will-change:transform; width:100%; height:100%; }
+.map-layer { position:relative; display:block; width:100%; height:100%; }
+.map-svg-img { display:block; width:100%; height:100%; pointer-events:none; }
+.map-interactive { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:hidden; }
+.territory-zone { pointer-events:auto; cursor:pointer; fill:#888; mix-blend-mode:saturation; fill-opacity:1; stroke:transparent; }
+.territory-zone.selected { fill:transparent; stroke:#27ae60; stroke-width:5; mix-blend-mode:normal; }
+.weather-widget {
+  position:absolute; bottom:calc(74px + 50px + 8px); left:12px; width:170px;
+  background:rgba(255,255,255,0.75); backdrop-filter:blur(8px); border-radius:10px;
+  padding:8px 10px; box-shadow:0 2px 6px rgba(0,0,0,0.1); z-index:25;
+  font-size:0.75rem; color:#333; max-height:35vh; overflow-y:auto;
+}
+.weather-widget h4 { font-size:0.72rem; color:#2c3e50; margin-bottom:2px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.08); padding-bottom:2px; }
+.weather-date { font-size:0.65rem; color:#666; margin-bottom:4px; }
+.weather-temp { font-size:1.1rem; font-weight:700; color:#e67e22; margin:2px 0; line-height:1.2; }
+.weather-desc { font-size:0.7rem; color:#555; margin-bottom:4px; line-height:1.2; }
+.weather-detail { font-size:0.68rem; color:#666; line-height:1.3; }
+.weather-forecast-title { font-size:0.7rem; font-weight:600; color:#2c3e50; margin:5px 0 2px; padding-top:4px; border-top:1px solid rgba(0,0,0,0.08); }
+.forecast-row { display:flex; justify-content:space-between; align-items:center; font-size:0.65rem; padding:2px 0; border-bottom:1px solid rgba(0,0,0,0.04); gap:3px; }
+.forecast-day { font-weight:600; flex-shrink:0; width:32px; }
+.forecast-rain { text-align:center; flex-shrink:0; font-size:0.6rem; }
+.forecast-emoji { flex-shrink:0; font-size:0.7rem; }
+.forecast-temp { color:#e67e22; text-align:right; flex:1; font-size:0.65rem; }
+.weather-loading { font-style:italic; color:#999; padding:6px 0; font-size:0.7rem; }
+.controls { position:absolute; top:50%; right:10px; transform:translateY(-50%); display:flex; flex-direction:column; gap:6px; z-index:20; }
+.btn { width:42px; height:42px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.18); font-size:1rem; cursor:pointer; }
+.btn-row { display:flex; gap:5px; justify-content:center; }
+.reset-btn { width:90px; border-radius:21px; font-weight:bold; color:#27ae60; align-self:flex-end; font-size:0.75rem; }
+.fullscreen-btn { width:42px; height:42px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.18); font-size:0.9rem; cursor:pointer; margin-bottom:2px; }
+.camera-btn { width:42px; height:42px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.18); font-size:1.05rem; cursor:pointer; margin-bottom:2px; }
+.camera-btn:active { transform:scale(.92); }
+.info-panel {
+  position:absolute; bottom:calc(12px + 50px); left:12px; width:170px; background:#fff; border-radius:10px;
+  padding:10px 12px; box-shadow:0 3px 10px rgba(0,0,0,0.2);
+  transform:translateY(120%); transition:transform 0.25s ease; z-index:20;
+}
+.info-panel.show { transform:translateY(0); }
+.info-panel h3 { font-size:0.85rem; color:#27ae60; margin-bottom:4px; }
+.info-panel p { font-size:0.72rem; color:#555; margin:2px 0; line-height:1.3; }
+.info-panel .color-swatch { display:inline-block; width:11px; height:11px; border-radius:2px; border:1px solid #999; vertical-align:middle; margin-right:5px; flex-shrink:0; }
+.info-panel .sel-list { max-height:110px; overflow-y:auto; margin-top:4px; }
+.info-panel .sel-item { display:flex; align-items:center; gap:5px; padding:2px 0; border-bottom:1px dotted #eee; font-size:0.72rem; color:#333; }
+.close-btn { position:absolute; top:6px; right:8px; font-size:0.95rem; cursor:pointer; color:#888; }
+.camera-toast {
+  position:absolute; top:60px; left:50%; transform:translateX(-50%);
+  background:rgba(44,62,80,.92); color:#fff; padding:8px 16px; border-radius:20px;
+  font-size:0.75rem; z-index:60; opacity:0; transition:opacity .3s; pointer-events:none;
+}
+.camera-toast.show { opacity:1; }
+@media (max-width:480px) {
+  header { padding:8px 10px; } header h1 { font-size:0.88rem; }
+  .tab { padding:8px 4px; font-size:0.8rem; }
+  .weather-widget { width:155px; padding:6px 8px; left:8px; bottom:calc(68px + 50px + 6px); max-height:32vh; }
+  .info-panel { width:155px; padding:8px 10px; left:8px; bottom:calc(10px + 50px); }
+  .info-panel h3 { font-size:0.8rem; } .info-panel p, .info-panel .sel-item { font-size:0.7rem; }
+  .controls { right:8px; gap:5px; }
+  .btn, .fullscreen-btn, .camera-btn { width:40px; height:40px; font-size:0.95rem; }
+  .reset-btn { width:82px; font-size:0.7rem; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Manggahan Congregation Territory Map</h1>
+  <p id="mapSubtitle">Manggahan Area — Territories 1–23</p>
+</header>
+<div class="tabs">
+  <div class="tab active" data-map="manggahan">Manggahan</div>
+  <div class="tab" data-map="payatas">Payatas</div>
+</div>
+<div class="map-container">
+  <div class="weather-widget" id="weatherWidget">
+    <h4>📍 QC Commonwealth</h4>
+    <div class="weather-date" id="liveDate"></div>
+    <div id="weatherContent"><div class="weather-loading">Loading...</div></div>
+  </div>
+  <div class="map-viewport" id="mapViewport">
+    <div class="map-wrapper" id="mapWrapper">
+      <div id="manggahanLayer" class="map-layer" style="display:block;">
+        <img src="manggahan.svg" class="map-svg-img" alt="Manggahan Territory Map" />
+      </div>
+      <div id="payatasLayer" class="map-layer" style="display:none;">
+        <img src="payatas.svg" class="map-svg-img" alt="Payatas Territory Map" />
+      </div>
+    </div>
+  </div>
+</div>
+<div class="camera-toast" id="cameraToast">📷 Capturing…</div>
+<div class="controls">
+  <div class="btn-row">
+    <button class="fullscreen-btn" id="fullscreenBtn">⛶</button>
+    <button class="camera-btn" id="btnCamera" title="Capture selected territories">📷</button>
+  </div>
+  <div class="btn-row"><button class="btn" id="zoomIn">+</button><button class="btn" id="zoomOut">−</button></div>
+  <div class="btn-row"><button class="btn" id="rotLeft">↺</button><button class="btn" id="rotRight">↻</button></div>
+  <button class="btn reset-btn" id="resetBtn">Reset</button>
+</div>
+<div class="info-panel" id="infoPanel">
+  <span class="close-btn" id="closeInfo">×</span>
+  <h3 id="ipTitle">—</h3>
+  <div id="ipBody"></div>
+</div>
+<script>
+const COLOR_MAP = {
+  '#b82a29':{n:1, s:'Commonwealth Avenue, Vilongco'},
+  '#e48b23':{n:2, s:'Vilongco, Martan St'},
+  '#0aec0f':{n:3, s:'Martan St, San Pedro'},
+  '#4889c3':{n:4, s:'San Pedro, Metom'},
+  '#e4de06':{n:5, s:'Metom, Don Fabian Ext'},
+  '#de6f54':{n:6, s:'Ecol, Tabigo St'},
+  '#8081af':{n:7, s:'Bacer, Don Fabian Ext'},
+  '#84be43':{n:8, s:'Don Fabian Upper'},
+  '#b6956a':{n:9, s:'Obanic Upper'},
+  '#6bb99f':{n:10, s:'Obanic, Don Fabian Ext'},
+  '#658f77':{n:11, s:'N. Mango, Don Fabian Ext'},
+  '#08eceb':{n:12, s:'N. Mango, Central'},
+  '#0e1192':{n:13, s:'Grape St, Central'},
+  '#e8d6a6':{n:14, s:'Pag-Amara, Central'},
+  '#e8fee6':{n:15, s:'Grape St, Central'},
+  '#e80fe6':{n:15, s:'Grape St, Central'},
+  '#a2eeea':{n:16, s:'Biccoleyte, Grape St'},
+  '#a20eea':{n:16, s:'Biccoleyte, Grape St'},
+  '#eaa4be':{n:17, s:'Biccoleyte, Commonwealth Ave'},
+  '#eb7b65':{n:18, s:'Commonwealth Ave, Grape St'},
+  '#a4ba33':{n:19, s:'Odigal St, Lower'},
+  '#b3960a':{n:20, s:'Odigal St, Outer'},
+  '#08efa1':{n:21, s:'Pacamara, Upper Outer'},
+  '#71122a':{n:22, s:'Pacamara, Outer'},
+  '#b49698':{n:23, s:'Far East, Commonwealth Side'},
+  '#0056a3':{n:24, s:'Commonwealth, Upper Left'},
+  '#7e888a':{n:25, s:'Commonwealth, Litex Rd'},
+  '#989fed':{n:26, s:'Soliven, Litex Rd'},
+  '#68b6f8':{n:27, s:'Litex Rd, West'},
+  '#fb59f2':{n:28, s:'Soliven, Central'},
+  '#8eb765':{n:29, s:'Litex Rd, South-West'},
+  '#94fb00':{n:30, s:'Litex Rd, South'},
+  '#f16526':{n:31, s:'Laurel, North'},
+  '#7b460c':{n:32, s:'Quezon, Central'},
+  '#fcea04':{n:33, s:'Abris, Central'},
+  '#f605ee':{n:34, s:'Litex Rd, Upper East'},
+  '#1aa44c':{n:35, s:'Litex Rd, Calachuchi'},
+  '#01a44c':{n:35, s:'Litex Rd, Calachuchi'},
+  '#11c2b5':{n:36, s:'Kapatiran, North-East'},
+  '#4e02fc':{n:37, s:'Creek, Far North-East'},
+  '#295f59':{n:38, s:'Kapatiran, Mid-East'},
+  '#fdfa89':{n:39, s:'Kapatiran Ext, Mid'},
+  '#01ffa9':{n:40, s:'Calachuchi, Abris'},
+  '#476694':{n:41, s:'Pinagkaisa, West'},
+  '#fc2300':{n:42, s:'Pinagkaisa, Central'},
+  '#f26b7c':{n:43, s:'Pinagkaisa, East'},
+  '#15d5c7':{n:44, s:'Paulia, Kapatiran Ext'},
+  '#0109fb':{n:45, s:'Aloe-Vera, Paulia'},
+  '#ffff03':{n:46, s:'Creek, Far East'},
+  '#c2534a':{n:47, s:'Bougainvillea, Upper'},
+  '#fe004d':{n:48, s:'Bougainvillea, Jasmin'},
+  '#5f3293':{n:49, s:'Cana, Jasmin'},
+  '#ab02ef':{n:50, s:'Aloe-Vera, Central South'},
+  '#f8f6df':{n:51, s:'Jasmin, South-East'},
+  '#fecb9e':{n:52, s:'Banaba, Far South-East'}
+};
+const TER_INFO = {};
+Object.keys(COLOR_MAP).forEach(hex => { const d = COLOR_MAP[hex]; TER_INFO['Ter '+d.n] = { color: hex.toUpperCase(), streets: d.s, num: d.n }; });
+function normalizeColor(c){ if(!c) return null; c = String(c).trim().toLowerCase(); if(c.startsWith('#')){ let h=c.slice(1); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; if(h.length===6) return '#'+h; } return null; }
+function getInheritedFill(el){
+  let node = el;
+  while(node && node.getAttribute){
+    const style = node.getAttribute('style');
+    if(style){ const m = style.match(/fill\s*:\s*([^;}"']+)/i); if(m){ const n=normalizeColor(m[1]); if(n) return n; if(m[1].trim().toLowerCase()==='none') return 'none'; } }
+    const f = node.getAttribute('fill');
+    if(f){ const n=normalizeColor(f); if(n) return n; if(f.trim().toLowerCase()==='none') return 'none'; }
+    node = node.parentElement;
+  }
+  return null;
+}
+const selectedSet = new Set();
+function onTerritoryClick(e){
+  e.stopPropagation();
+  const ter = e.currentTarget.dataset.ter;
+  if(selectedSet.has(ter)) selectedSet.delete(ter); else selectedSet.add(ter);
+  applySelection();
+}
+function applySelection(){
+  document.querySelectorAll('.territory-zone').forEach(z => {
+    if(selectedSet.has(z.dataset.ter)) z.classList.add('selected'); else z.classList.remove('selected');
+  });
+  updateInfoPanel();
+}
+function clearSelection(){ selectedSet.clear(); applySelection(); }
+function updateInfoPanel(){
+  const panel=document.getElementById('infoPanel'), title=document.getElementById('ipTitle'), body=document.getElementById('ipBody');
+  if(selectedSet.size===0){ panel.classList.remove('show'); return; }
+  panel.classList.add('show');
+  const sorted=[...selectedSet].sort((a,b)=>TER_INFO[a].num-TER_INFO[b].num);
+  if(sorted.length===1){
+    const t=TER_INFO[sorted[0]];
+    title.textContent=sorted[0];
+    body.innerHTML=`<p>Streets: ${t.streets}</p><p><span class="color-swatch" style="background:${t.color}"></span>Selected</p>`;
+  } else {
+    title.textContent=sorted.length+' Territories Selected';
+    let html='<div class="sel-list">';
+    sorted.forEach(id=>{ const t=TER_INFO[id]; html+=`<div class="sel-item"><span class="color-swatch" style="background:${t.color}"></span><b>${id}</b></div>`; });
+    html+='</div>'; body.innerHTML=html;
+  }
+}
+async function buildTapOverlay(svgUrl, layerEl){
+  try {
+    const res = await fetch(svgUrl, {cache:'no-cache'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text = await res.text();
+    const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+    const imported = document.importNode(doc.documentElement, true);
+    imported.setAttribute('class','map-interactive');
+    imported.setAttribute('preserveAspectRatio','xMidYMid meet');
+    imported.style.position='absolute'; imported.style.top='0'; imported.style.left='0';
+    imported.style.width='100%'; imported.style.height='100%';
+    imported.removeAttribute('width'); imported.removeAttribute('height');
+    imported.querySelectorAll('path, polygon, polyline, rect, circle, ellipse, line').forEach(sh => {
+      const fill = getInheritedFill(sh);
+      const match = fill ? COLOR_MAP[fill] : null;
+      if(match){
+        sh.classList.add('territory-zone');
+        sh.dataset.ter='Ter '+match.n; sh.dataset.streets=match.s; sh.dataset.color=fill.toUpperCase();
+        sh.removeAttribute('fill'); sh.removeAttribute('stroke');
+        sh.style.removeProperty('fill');
+        sh.style.removeProperty('stroke');
+        sh.style.removeProperty('fill-opacity');
+        sh.style.removeProperty('stroke-width');
+        sh.style.pointerEvents='auto';
+        sh.addEventListener('click', onTerritoryClick);
+      } else sh.style.display='none';
+    });
+    imported.querySelectorAll('text, tspan, image, use').forEach(el => { el.style.display='none'; });
+    layerEl.appendChild(imported);
+  } catch(err){ console.warn('Tap overlay could not load for '+svgUrl+':', err.message); }
+}
+
+/* ============ CAMERA CAPTURE → CLIPBOARD → MESSENGER ============ */
+function showToast(msg){
+  const t = document.getElementById('cameraToast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function loadImage(src){
+  return new Promise((res, rej) => { const i = new Image(); i.crossOrigin='anonymous'; i.onload=()=>res(i); i.onerror=rej; i.src=src; });
+}
+async function captureSelected(){
+  if(selectedSet.size === 0){ showToast('Tap one or more territories first'); return; }
+  showToast('📷 Capturing…');
+  try {
+    const layer = layers[activeMap].el;
+    const svgUrl = layer.querySelector('img.map-svg-img').src;
+    const overlay = layer.querySelector('svg.map-interactive');
+    const selZones = [...overlay.querySelectorAll('.territory-zone.selected')];
+    if(selZones.length === 0){ showToast('No selected zones found'); return; }
+    // bounding box of selected zones (in SVG viewBox coords) + padding
+    let bb = null;
+    selZones.forEach(z => {
+      const b = z.getBBox();
+      if(!bb) bb = {x:b.x, y:b.y, x2:b.x+b.width, y2:b.y+b.height};
+      else { bb.x=Math.min(bb.x,b.x); bb.y=Math.min(bb.y,b.y); bb.x2=Math.max(bb.x2,b.x+b.width); bb.y2=Math.max(bb.y2,b.y+b.height); }
+    });
+    const vb = overlay.viewBox.baseVal;
+    const padX = (bb.x2-bb.x)*0.15, padY = (bb.y2-bb.y)*0.15;
+    const rx = Math.max(0, bb.x - padX), ry = Math.max(0, bb.y - padY);
+    const rw = Math.min(vb.width - rx, (bb.x2-bb.x) + padX*2);
+    const rh = Math.min(vb.height - ry, (bb.y2-bb.y) + padY*2);
+    const SCALE = 3;
+    const cw = Math.min(2400, Math.round(rw*SCALE));
+    const ch = Math.round(cw * rh / rw);
+    const canvas = document.createElement('canvas');
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    // 1) draw the full-color SVG map, cropped to the selected region
+    const baseImg = await loadImage(svgUrl);
+    ctx.drawImage(baseImg, rx, ry, rw, rh, 0, 0, cw, ch);
+    // 2) draw green highlight overlay on selected zones
+    const clone = overlay.cloneNode(true);
+    clone.setAttribute('viewBox', `${rx} ${ry} ${rw} ${rh}`);
+    clone.setAttribute('width', cw); clone.setAttribute('height', ch);
+    clone.querySelectorAll('.territory-zone').forEach(z => {
+      if(z.classList.contains('selected')){
+        z.setAttribute('fill','rgba(39,174,96,0.35)');
+        z.setAttribute('stroke','#1e8449');
+        z.setAttribute('stroke-width','4');
+        z.style.mixBlendMode = 'normal';
+        z.style.display = '';
+      } else z.style.display = 'none';
+    });
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const hlUrl = URL.createObjectURL(new Blob([svgStr], {type:'image/svg+xml;charset=utf-8'}));
+    const hlImg = await loadImage(hlUrl);
+    ctx.drawImage(hlImg, 0, 0, cw, ch);
+    URL.revokeObjectURL(hlUrl);
+    // 3) PNG → clipboard
+    const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    let copied = false;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({'image/png': pngBlob})]);
+      copied = true;
+    } catch(e){
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(pngBlob);
+      a.download = 'selected-territories.png';
+      a.click();
+    }
+    showToast(copied ? '✅ Copied! Opening Messenger…' : '✅ Saved! Opening Messenger…');
+    // 4) open Messenger app (fallback to web if not installed)
+    setTimeout(()=>{
+      const start = Date.now();
+      window.location.href = 'fb-messenger://';
+      setTimeout(()=>{ if(Date.now()-start < 2200) window.location.href = 'https://www.messenger.com/'; }, 1600);
+    }, 600);
+  } catch(err){
+    console.error(err);
+    showToast('Capture failed — try again');
+  }
+}
+document.getElementById('btnCamera').addEventListener('click', captureSelected);
+
+/* === LIVE DATE === */
+function updateDate(){
+  const options={weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Manila'};
+  document.getElementById('liveDate').textContent = new Date().toLocaleDateString('en-PH', options);
+}
+updateDate(); setInterval(updateDate, 60000);
+const WEATHER_LAT=14.6744, WEATHER_LON=121.0819;
+function getDayName(ds){ const d=new Date(ds); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]; }
+function getWeatherDescription(code){
+  const m={0:'☀️ Clear',1:'🌤️ Mostly Clear',2:'⛅ Partly Cloudy',3:'☁️ Overcast',45:'🌫️ Fog',48:'🌫️ Rime Fog',51:'🌧️ Lt Drizzle',53:'🌧️ Mod Drizzle',55:'🌧️ Dense Drizzle',61:'🌦️ Lt Rain',63:'🌧️ Mod Rain',65:'🌧️ Hvy Rain',71:'❄️ Lt Snow',73:'❄️ Mod Snow',75:'❄️ Hvy Snow',80:'🌦️ Lt Showers',81:'🌧️ Mod Showers',82:'⛈️ Hvy Showers',95:'⛈️ T-Storm',96:'⛈️ Storm+Hail'};
+  return m[code]||'❓ Unknown';
+}
+async function fetchWeather(){
+  const content=document.getElementById('weatherContent');
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=5&timezone=Asia%2FManila`;
+    const data=await (await fetch(url)).json();
+    const temp=Math.round(data.current.temperature_2m), humidity=data.current.relative_humidity_2m, wind=Math.round(data.current.wind_speed_10m);
+    const desc=getWeatherDescription(data.current.weather_code);
+    let fh='';
+    for(let i=1;i<=4;i++){
+      const day=getDayName(data.daily.time[i]), high=Math.round(data.daily.temperature_2m_max[i]), low=Math.round(data.daily.temperature_2m_min[i]);
+      const rain=data.daily.precipitation_probability_max[i]||0, emoji=getWeatherDescription(data.daily.weather_code[i]).split(' ')[0];
+      fh+=`<div class="forecast-row"><span class="forecast-day">${day}</span><span class="forecast-rain">☔${rain}%</span><span class="forecast-emoji">${emoji}</span><span class="forecast-temp">${low}°/${high}°</span></div>`;
+    }
+    content.innerHTML=`<div class="weather-temp">${temp}°C</div><div class="weather-desc">${desc}</div><div class="weather-detail">💧 ${humidity}% &nbsp; 🌬️ ${wind}km/h</div><div class="weather-forecast-title">📅 Forecast</div>${fh}`;
+  }catch(err){ content.innerHTML=`<span style="color:#e74c3c;">Unavailable</span>`; }
+}
+fetchWeather(); setInterval(fetchWeather, 900000);
+
+const layers = {
+  manggahan:{el:document.getElementById('manggahanLayer'), subtitle:'Manggahan Area — Territories 1–23'},
+  payatas:{el:document.getElementById('payatasLayer'), subtitle:'Payatas Area — Territories 24–52'}
+};
+let activeMap='manggahan', scale=1, posX=0, posY=0, rotation=0;
+const wrapper=document.getElementById('mapWrapper'), viewport=document.getElementById('mapViewport');
+function updateTransform(){ wrapper.style.transform=`translate(${posX}px, ${posY}px) scale(${scale}) rotate(${rotation}deg)`; }
+function resetView(){ scale=1; posX=0; posY=0; rotation=0; updateTransform(); clearSelection(); }
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    activeMap=tab.dataset.map;
+    layers.manggahan.el.style.display=activeMap==='manggahan'?'block':'none';
+    layers.payatas.el.style.display=activeMap==='payatas'?'block':'none';
+    document.getElementById('mapSubtitle').textContent=layers[activeMap].subtitle;
+    resetView();
+  });
+});
+document.getElementById('zoomIn').onclick=()=>{ scale=Math.min(scale*1.4,6); updateTransform(); };
+document.getElementById('zoomOut').onclick=()=>{ scale=Math.max(scale/1.4,0.6); updateTransform(); };
+document.getElementById('rotLeft').onclick=()=>{ rotation-=15; updateTransform(); };
+document.getElementById('rotRight').onclick=()=>{ rotation+=15; updateTransform(); };
+document.getElementById('resetBtn').onclick=resetView;
+document.getElementById('fullscreenBtn').onclick=()=>{
+  if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen)?.call(document.documentElement); }
+  else { (document.exitFullscreen||document.webkitExitFullscreen)?.call(document); }
+};
+let drag=null;
+viewport.addEventListener('mousedown', e=>{ drag={x:e.clientX-posX, y:e.clientY-posY}; });
+window.addEventListener('mousemove', e=>{ if(!drag) return; posX=e.clientX-drag.x; posY=e.clientY-drag.y; updateTransform(); });
+window.addEventListener('mouseup', ()=>drag=null);
+let touchState=null;
+function getDist(t1,t2){ return Math.hypot(t2.clientX-t1.clientX, t2.clientY-t1.clientY); }
+function getAngle(t1,t2){ return Math.atan2(t2.clientY-t1.clientY, t2.clientX-t1.clientX)*180/Math.PI; }
+viewport.addEventListener('touchstart', e=>{
+  if(e.touches.length===1){ touchState={mode:'pan',x:e.touches[0].clientX-posX,y:e.touches[0].clientY-posY}; }
+  else if(e.touches.length===2){ const [t1,t2]=[e.touches[0],e.touches[1]]; touchState={mode:'multi',dist:getDist(t1,t2),angle:getAngle(t1,t2),startScale:scale,startRot:rotation}; }
+},{passive:true});
+viewport.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  if(!touchState) return;
+  if(touchState.mode==='pan'){ posX=e.touches[0].clientX-touchState.x; posY=e.touches[0].clientY-touchState.y; updateTransform(); }
+  else if(touchState.mode==='multi' && e.touches.length===2){
+    const [t1,t2]=[e.touches[0],e.touches[1]];
+    scale=Math.max(0.6,Math.min(6,touchState.startScale*(getDist(t1,t2)/touchState.dist)));
+    rotation=touchState.startRot+(getAngle(t1,t2)-touchState.angle);
+    updateTransform();
+  }
+},{passive:false});
+viewport.addEventListener('touchend', ()=>touchState=null);
+document.getElementById('closeInfo').onclick=clearSelection;
+viewport.addEventListener('click', e=>{ if(!e.target.closest('.territory-zone')) clearSelection(); });
+
+buildTapOverlay('manggahan.svg', layers.manggahan.el);
+buildTapOverlay('payatas.svg', layers.payatas.el);
+</script>
+</body>
+</html>
