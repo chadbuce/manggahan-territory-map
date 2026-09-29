@@ -134,6 +134,7 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   <h3 id="ipTitle">—</h3>
   <div id="ipBody"></div>
 </div>
+<div class="qr-modal" id="qrModal"><p>Scan to open this map</p><img id="qrImg" alt="QR code" /><br/><button class="close-qr" id="qrClose">Close</button></div>
 <script>
 const COLOR_MAP = {
   '#b82a29':{n:1, s:'Commonwealth Avenue, Vilongco'},
@@ -456,15 +457,19 @@ viewport.addEventListener('touchend', ()=>touchState=null);
 document.getElementById('closeInfo').onclick=clearSelection;
 viewport.addEventListener('click', e=>{ if(!e.target.closest('.territory-zone')) clearSelection(); });
 
-document.getElementById('qrBtn').addEventListener('click', () => {
-  document.getElementById('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=' + encodeURIComponent('https://tinyurl.com/Manggahan-Ter-Map');
-  document.getElementById('qrModal').classList.add('show');
+var _qrb = document.getElementById('qrBtn');
+if(_qrb) _qrb.addEventListener('click', () => {
+  var _qri = document.getElementById('qrImg');
+  var _qrm = document.getElementById('qrModal');
+  if(_qri) _qri.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=' + encodeURIComponent('https://tinyurl.com/Manggahan-Ter-Map');
+  if(_qrm) _qrm.classList.add('show');
 });
-document.getElementById('qrClose').addEventListener('click', () => document.getElementById('qrModal').classList.remove('show'));
-document.getElementById('qrModal').addEventListener('click', (e) => { if(e.target.id==='qrModal') e.currentTarget.classList.remove('show'); });
+var _qrc = document.getElementById('qrClose');
+if(_qrc) _qrc.addEventListener('click', () => { var m=document.getElementById('qrModal'); if(m) m.classList.remove('show'); });
+var _qrm2 = document.getElementById('qrModal');
+if(_qrm2) _qrm2.addEventListener('click', (e) => { if(e.target.id==='qrModal') e.currentTarget.classList.remove('show'); });
 buildTapOverlay('manggahan.svg', layers.manggahan.el);
 buildTapOverlay('payatas.svg', layers.payatas.el);
 </script>
-<div class="qr-modal" id="qrModal"><p>Scan to open this map</p><img id="qrImg" alt="QR code" /><br/><button class="close-qr" id="qrClose">Close</button></div>
 </body>
 </html>
