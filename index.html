@@ -248,9 +248,15 @@ async function buildTapOverlay(svgUrl, layerEl){
         sh.style.removeProperty('stroke-width');
         sh.style.pointerEvents='auto';
         sh.addEventListener('click', onTerritoryClick);
-      } else sh.style.display='none';
+      } else if(sh.tagName.toLowerCase()==='path' && (fill==='#ffffff' || fill==='#fff' || fill==='#000000' || fill==='#000')){
+        sh.style.pointerEvents='none'; // outlined numbers / street names (black or white) — keep on top
+      } else {
+        sh.style.display='none';
+      }
     });
-    imported.querySelectorAll('text, tspan, image, use').forEach(el => { el.style.display='none'; });
+    // keep text elements visible (numbers/streets stay on top; same position as base = no visible double)
+    imported.querySelectorAll('text, tspan').forEach(el => { el.style.pointerEvents='none'; });
+    imported.querySelectorAll('image, use').forEach(el => { el.style.display='none'; });
     layerEl.appendChild(imported);
   } catch(err){ console.warn('Tap overlay could not load for '+svgUrl+':', err.message); }
 }
@@ -294,25 +300,7 @@ async function captureSelected(){
     // 1) draw the full-color SVG map, cropped to the selected region
     const baseImg = await loadImage(svgUrl);
     ctx.drawImage(baseImg, rx, ry, rw, rh, 0, 0, cw, ch);
-    // 2) draw green highlight overlay on selected zones
-    const clone = overlay.cloneNode(true);
-    clone.setAttribute('viewBox', `${rx} ${ry} ${rw} ${rh}`);
-    clone.setAttribute('width', cw); clone.setAttribute('height', ch);
-    clone.querySelectorAll('.territory-zone').forEach(z => {
-      if(z.classList.contains('selected')){
-        z.setAttribute('fill','rgba(39,174,96,0.35)');
-        z.setAttribute('stroke','#1e8449');
-        z.setAttribute('stroke-width','4');
-        z.style.mixBlendMode = 'normal';
-        z.style.display = '';
-      } else z.style.display = 'none';
-    });
-    const svgStr = new XMLSerializer().serializeToString(clone);
-    const hlUrl = URL.createObjectURL(new Blob([svgStr], {type:'image/svg+xml;charset=utf-8'}));
-    const hlImg = await loadImage(hlUrl);
-    ctx.drawImage(hlImg, 0, 0, cw, ch);
-    URL.revokeObjectURL(hlUrl);
-    // 3) PNG → clipboard
+    // 2) PNG → save + share
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     // save automatically to Downloads folder
     const dlUrl = URL.createObjectURL(pngBlob);
