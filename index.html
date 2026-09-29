@@ -317,11 +317,12 @@ async function captureSelected(){
     const baseImg = await loadImage(svgUrl);
     try { await baseImg.decode(); } catch(e){}
     ctx.filter = 'grayscale(1)';
-    ctx.drawImage(baseImg, 0, 0, vb.width, vb.height, 0, HEADER, mapW, mapH);
+    ctx.drawImage(baseImg, 0, HEADER, mapW, mapH);
     ctx.filter = 'none';
     // — step 2: repaint selected zones in their original color —
     const selClone = overlay.cloneNode(true);
     selClone.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
+    selClone.setAttribute('preserveAspectRatio', 'none');
     selClone.setAttribute('width', mapW); selClone.setAttribute('height', mapH);
     selClone.querySelectorAll('path:not(.territory-zone), text, tspan').forEach(el => { el.style.display='none'; });
     selClone.querySelectorAll('.territory-zone').forEach(z => {
@@ -335,6 +336,7 @@ async function captureSelected(){
     // — step 3: redraw territory numbers + street names on top —
     const txtClone = overlay.cloneNode(true);
     txtClone.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
+    txtClone.setAttribute('preserveAspectRatio', 'none');
     txtClone.setAttribute('width', mapW); txtClone.setAttribute('height', mapH);
     txtClone.querySelectorAll('.territory-zone').forEach(z => { z.style.display='none'; });
     const txtUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(txtClone)], {type:'image/svg+xml;charset=utf-8'}));
