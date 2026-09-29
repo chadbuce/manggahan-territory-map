@@ -301,18 +301,12 @@ async function captureSelected(){
     const overlay = layer.querySelector('svg.map-interactive');
     const selZones = [...overlay.querySelectorAll('.territory-zone.selected')];
     if(selZones.length === 0){ showToast('No selected zones found'); return; }
-    // bounding box in ROOT viewBox coords (accounts for group transforms via getCTM)
+    // bounding box of selected zones + padding
     let bb = null;
     selZones.forEach(z => {
       const b = z.getBBox();
-      let m = z.getCTM ? z.getCTM() : null;
-      const corners = [[b.x,b.y],[b.x+b.width,b.y],[b.x,b.y+b.height],[b.x+b.width,b.y+b.height]];
-      corners.forEach(([x,y])=>{
-        let tx=x, ty=y;
-        if(m){ tx = m.a*x + m.c*y + m.e; ty = m.b*x + m.d*y + m.f; }
-        if(!bb) bb={x:tx,y:ty,x2:tx,y2:ty};
-        else { bb.x=Math.min(bb.x,tx); bb.y=Math.min(bb.y,ty); bb.x2=Math.max(bb.x2,tx); bb.y2=Math.max(bb.y2,ty); }
-      });
+      if(!bb) bb = {x:b.x, y:b.y, x2:b.x+b.width, y2:b.y+b.height};
+      else { bb.x=Math.min(bb.x,b.x); bb.y=Math.min(bb.y,b.y); bb.x2=Math.max(bb.x2,b.x+b.width); bb.y2=Math.max(bb.y2,b.y+b.height); }
     });
     const vb = overlay.viewBox.baseVal;
     const padX = (bb.x2-bb.x)*0.15, padY = (bb.y2-bb.y)*0.15;
