@@ -77,6 +77,11 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   .btn, .fullscreen-btn, .camera-btn { width:40px; height:40px; font-size:0.95rem; }
   .reset-btn { width:82px; font-size:0.7rem; }
 }
+.save-panel { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:16px 20px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,.3); z-index:70; text-align:center; display:none; }
+.save-panel.show { display:block; }
+.save-panel p { font-size:0.8rem; color:#333; margin-bottom:10px; }
+.save-panel button { background:#27ae60; color:#fff; border:none; padding:10px 16px; border-radius:20px; font-size:0.85rem; cursor:pointer; margin:0 3px; }
+.save-panel .close-save { background:#95a5a6; }
 </style>
 </head>
 <body>
@@ -270,9 +275,26 @@ function showToast(msg){
 function loadImage(src){
   return new Promise((res, rej) => { const i = new Image(); i.crossOrigin='anonymous'; i.onload=()=>res(i); i.onerror=rej; i.src=src; });
 }
+let lastPngBlob = null;
+function doDownload(blob){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'selected-territories.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+async function doShare(blob){
+  try {
+    const file = new File([blob], 'selected-territories.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Selected Territories'});
+    }
+  } catch(e){ /* cancelled or unsupported */ }
+}
 async function captureSelected(){
   if(selectedSet.size === 0){ showToast('Tap one or more territories first'); return; }
   showToast('📷 Capturing…');
+  document.getElementById('savePanel').classList.remove('show');
   try {
     const layer = layers[activeMap].el;
     const svgUrl = layer.querySelector('img.map-svg-img').src;
@@ -298,39 +320,36 @@ async function captureSelected(){
     const canvas = document.createElement('canvas');
     canvas.width = mapW; canvas.height = mapH + HEADER;
     const ctx = canvas.getContext('2d');
-    // — header strip (text lines, only in captured image) —
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, mapW, HEADER);
     ctx.fillStyle = '#2c3e50';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = `bold ${Math.round(HEADER*0.34)}px Segoe UI, Roboto, sans-serif`;
     ctx.fillText('Ito Ang Gagawin Ngayon', mapW/2, HEADER*0.36);
     ctx.font = `${Math.round(HEADER*0.24)}px Segoe UI, Roboto, sans-serif`;
     const dateStr = new Date().toLocaleDateString('en-US', {timeZone:'Asia/Manila', month:'2-digit', day:'2-digit', year:'numeric'});
     ctx.fillText(dateStr, mapW/2, HEADER*0.72);
-    // — full-color map below header —
     const baseImg = await loadImage(svgUrl);
     ctx.drawImage(baseImg, rx, ry, rw, rh, 0, HEADER, mapW, mapH);
-    // — PNG: auto-save to Downloads + open native share sheet —
-    const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    const dlUrl = URL.createObjectURL(pngBlob);
-    const a = document.createElement('a');
-    a.href = dlUrl; a.download = 'selected-territories.png';
-    document.body.appendChild(a); a.click(); a.remove();
-    showToast('✅ Saved to Downloads');
-    try {
-      const file = new File([pngBlob], 'selected-territories.png', {type:'image/png'});
-      if(navigator.canShare && navigator.canShare({files:[file]})){
-        await navigator.share({files:[file], title:'Selected Territories'});
-      }
-    } catch(e){ /* cancelled or unsupported */ }
-    setTimeout(()=>URL.revokeObjectURL(dlUrl), 5000);
+    lastPngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    // auto-attempt download (works on desktop; may be blocked on mobile after async)
+    try { doDownload(lastPngBlob); } catch(e){}
+    showToast('✅ Ready — tap Save/Share');
+    document.getElementById('savePanel').classList.add('show');
   } catch(err){
     console.error(err);
     showToast('Capture failed — try again');
   }
 }
+const _sb = document.getElementById('saveBtn');
+if(_sb) _sb.addEventListener('click', async () => {
+  if(lastPngBlob){ doDownload(lastPngBlob); await doShare(lastPngBlob); }
+  document.getElementById('savePanel').classList.remove('show');
+});
+const _sc = document.getElementById('saveClose');
+if(_sc) _sc.addEventListener('click', () => {
+  document.getElementById('savePanel').classList.remove('show');
+});
 document.getElementById('btnCamera').addEventListener('click', captureSelected);
 
 /* === LIVE DATE === */
@@ -420,5 +439,6 @@ viewport.addEventListener('click', e=>{ if(!e.target.closest('.territory-zone'))
 buildTapOverlay('manggahan.svg', layers.manggahan.el);
 buildTapOverlay('payatas.svg', layers.payatas.el);
 </script>
+<div class="save-panel" id="savePanel"><p>✅ Image ready — tap to save</p><button id="saveBtn">💾 Save / Share</button><button class="close-save" id="saveClose">✕</button></div>
 </body>
 </html>
