@@ -77,11 +77,6 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   .btn, .fullscreen-btn, .camera-btn { width:40px; height:40px; font-size:0.95rem; }
   .reset-btn { width:82px; font-size:0.7rem; }
 }
-.save-panel { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:16px 20px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,.3); z-index:70; text-align:center; display:none; }
-.save-panel.show { display:block; }
-.save-panel p { font-size:0.8rem; color:#333; margin-bottom:10px; }
-.save-panel button { background:#27ae60; color:#fff; border:none; padding:10px 16px; border-radius:20px; font-size:0.85rem; cursor:pointer; margin:0 3px; }
-.save-panel .close-save { background:#95a5a6; }
 </style>
 </head>
 <body>
@@ -125,7 +120,6 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   <h3 id="ipTitle">—</h3>
   <div id="ipBody"></div>
 </div>
-<div class="save-panel" id="savePanel"><p>✅ Image ready — tap to save</p><button id="saveBtn">💾 Save / Share</button><button class="close-save" id="saveClose">✕</button></div>
 <script>
 const COLOR_MAP = {
   '#b82a29':{n:1, s:'Commonwealth Avenue, Vilongco'},
@@ -276,7 +270,6 @@ function showToast(msg){
 function loadImage(src){
   return new Promise((res, rej) => { const i = new Image(); i.crossOrigin='anonymous'; i.onload=()=>res(i); i.onerror=rej; i.src=src; });
 }
-let lastPngBlob = null;
 function doDownload(blob){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -295,7 +288,6 @@ async function doShare(blob){
 async function captureSelected(){
   if(selectedSet.size === 0){ showToast('Tap one or more territories first'); return; }
   showToast('📷 Capturing…');
-  document.getElementById('savePanel').classList.remove('show');
   try {
     const layer = layers[activeMap].el;
     const svgUrl = layer.querySelector('img.map-svg-img').src;
@@ -309,12 +301,10 @@ async function captureSelected(){
     canvas.width = mapW; canvas.height = mapH + HEADER;
     const ctx = canvas.getContext('2d');
     // — 3-line header —
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, mapW, HEADER);
-    ctx.fillStyle = '#2c3e50';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, mapW, HEADER);
+    ctx.fillStyle = '#2c3e50'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = `bold ${Math.round(HEADER*0.26)}px Segoe UI, Roboto, sans-serif`;
-    ctx.fillText('Ito Ang Gagawin Ngayon', mapW/2, HEADER*0.24);
+    ctx.fillText('Ito Po Ang Gagawin Ngayon', mapW/2, HEADER*0.24);
     ctx.font = `${Math.round(HEADER*0.19)}px Segoe UI, Roboto, sans-serif`;
     const dateStr = new Date().toLocaleDateString('en-US', {timeZone:'Asia/Manila', month:'2-digit', day:'2-digit', year:'numeric'});
     ctx.fillText(dateStr, mapW/2, HEADER*0.52);
@@ -323,30 +313,39 @@ async function captureSelected(){
     ctx.fillStyle = '#27ae60';
     ctx.fillText('Territories: ' + terList, mapW/2, HEADER*0.80);
     ctx.fillStyle = '#2c3e50';
-    // — whole map, full color —
+    // — step 1: whole map in grayscale —
     const baseImg = await loadImage(svgUrl);
     try { await baseImg.decode(); } catch(e){}
+    ctx.filter = 'grayscale(1)';
     ctx.drawImage(baseImg, 0, 0, vb.width, vb.height, 0, HEADER, mapW, mapH);
-    // — grayscale only the unselected zones via canvas saturation composite —
-    const clone = overlay.cloneNode(true);
-    clone.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
-    clone.setAttribute('width', mapW); clone.setAttribute('height', mapH);
-    clone.querySelectorAll('path:not(.territory-zone), text, tspan').forEach(el => { el.style.display='none'; });
-    clone.querySelectorAll('.territory-zone').forEach(z => {
-      if(z.classList.contains('selected')){ z.style.display='none'; }
-      else { z.style.display=''; z.style.fill='#888'; z.style.mixBlendMode='normal'; }
+    ctx.filter = 'none';
+    // — step 2: repaint selected zones in their original color —
+    const selClone = overlay.cloneNode(true);
+    selClone.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
+    selClone.setAttribute('width', mapW); selClone.setAttribute('height', mapH);
+    selClone.querySelectorAll('path:not(.territory-zone), text, tspan').forEach(el => { el.style.display='none'; });
+    selClone.querySelectorAll('.territory-zone').forEach(z => {
+      if(z.classList.contains('selected')){ z.style.display=''; z.style.fill = z.dataset.color; z.style.mixBlendMode='normal'; }
+      else { z.style.display='none'; }
     });
-    const grayUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], {type:'image/svg+xml;charset=utf-8'}));
-    const grayImg = await loadImage(grayUrl);
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.drawImage(grayImg, 0, HEADER, mapW, mapH);
-    ctx.globalCompositeOperation = 'source-over';
-    URL.revokeObjectURL(grayUrl);
-    // — PNG: save + share —
-    lastPngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    try { doDownload(lastPngBlob); } catch(e){}
-    showToast('✅ Ready — tap Save/Share');
-    document.getElementById('savePanel').classList.add('show');
+    const selUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(selClone)], {type:'image/svg+xml;charset=utf-8'}));
+    const selImg = await loadImage(selUrl);
+    ctx.drawImage(selImg, 0, HEADER, mapW, mapH);
+    URL.revokeObjectURL(selUrl);
+    // — step 3: redraw territory numbers + street names on top —
+    const txtClone = overlay.cloneNode(true);
+    txtClone.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
+    txtClone.setAttribute('width', mapW); txtClone.setAttribute('height', mapH);
+    txtClone.querySelectorAll('.territory-zone').forEach(z => { z.style.display='none'; });
+    const txtUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(txtClone)], {type:'image/svg+xml;charset=utf-8'}));
+    const txtImg = await loadImage(txtUrl);
+    ctx.drawImage(txtImg, 0, HEADER, mapW, mapH);
+    URL.revokeObjectURL(txtUrl);
+    // — save + share —
+    const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    doDownload(pngBlob);
+    showToast('✅ Saved to Downloads');
+    await doShare(pngBlob);
   } catch(err){
     console.error(err);
     showToast('Capture failed — try again');
