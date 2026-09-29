@@ -312,21 +312,6 @@ async function captureSelected(){
     // — full-color map below header —
     const baseImg = await loadImage(svgUrl);
     ctx.drawImage(baseImg, rx, ry, rw, rh, 0, HEADER, mapW, mapH);
-    // — grayscale only the unselected zones via canvas saturation composite —
-    const clone = overlay.cloneNode(true);
-    clone.setAttribute('viewBox', `${rx} ${ry} ${rw} ${rh}`);
-    clone.setAttribute('width', mapW); clone.setAttribute('height', mapH);
-    clone.querySelectorAll('path:not(.territory-zone), text, tspan').forEach(el => { el.style.display='none'; });
-    clone.querySelectorAll('.territory-zone').forEach(z => {
-      if(z.classList.contains('selected')){ z.style.display='none'; }
-      else { z.style.display=''; z.style.fill='#888'; z.style.mixBlendMode='normal'; }
-    });
-    const grayUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], {type:'image/svg+xml;charset=utf-8'}));
-    const grayImg = await loadImage(grayUrl);
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.drawImage(grayImg, 0, HEADER, mapW, mapH);
-    ctx.globalCompositeOperation = 'source-over';
-    URL.revokeObjectURL(grayUrl);
     // — PNG: auto-save to Downloads + open native share sheet —
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     const dlUrl = URL.createObjectURL(pngBlob);
