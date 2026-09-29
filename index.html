@@ -21,8 +21,9 @@ header p { font-size:0.7rem; opacity:.8; margin-top:2px; }
 .map-layer { position:relative; display:block; width:100%; height:100%; }
 .map-svg-img { display:block; width:100%; height:100%; pointer-events:none; }
 .map-interactive { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:hidden; }
-.territory-zone { pointer-events:auto; cursor:pointer; fill:#888; mix-blend-mode:saturation; fill-opacity:1; stroke:transparent; }
-.territory-zone.selected { fill:transparent; stroke:#27ae60; stroke-width:5; mix-blend-mode:normal; }
+.territory-zone { pointer-events:auto; cursor:pointer; fill:transparent; stroke:transparent; }
+body.has-selection .territory-zone { fill:#888; mix-blend-mode:saturation; fill-opacity:1; }
+.territory-zone.selected { fill:transparent; mix-blend-mode:normal; }
 .weather-widget {
   position:absolute; bottom:calc(74px + 50px + 8px); left:12px; width:170px;
   background:rgba(255,255,255,0.75); backdrop-filter:blur(8px); border-radius:10px;
@@ -199,6 +200,7 @@ function onTerritoryClick(e){
   applySelection();
 }
 function applySelection(){
+  document.body.classList.toggle('has-selection', selectedSet.size > 0);
   document.querySelectorAll('.territory-zone').forEach(z => {
     if(selectedSet.has(z.dataset.ter)) z.classList.add('selected'); else z.classList.remove('selected');
   });
@@ -312,23 +314,20 @@ async function captureSelected(){
     URL.revokeObjectURL(hlUrl);
     // 3) PNG → clipboard
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    let copied = false;
+    // save automatically to Downloads folder
+    const dlUrl = URL.createObjectURL(pngBlob);
+    const a = document.createElement('a');
+    a.href = dlUrl; a.download = 'selected-territories.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('✅ Saved to Downloads');
+    // open native share sheet (Messenger, etc.) if the device supports it
     try {
-      await navigator.clipboard.write([new ClipboardItem({'image/png': pngBlob})]);
-      copied = true;
-    } catch(e){
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(pngBlob);
-      a.download = 'selected-territories.png';
-      a.click();
-    }
-    showToast(copied ? '✅ Copied! Opening Messenger…' : '✅ Saved! Opening Messenger…');
-    // 4) open Messenger app (fallback to web if not installed)
-    setTimeout(()=>{
-      const start = Date.now();
-      window.location.href = 'fb-messenger://';
-      setTimeout(()=>{ if(Date.now()-start < 2200) window.location.href = 'https://www.messenger.com/'; }, 1600);
-    }, 600);
+      const file = new File([pngBlob], 'selected-territories.png', {type:'image/png'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:'Selected Territories'});
+      }
+    } catch(e){ /* user cancelled or share unsupported */ }
+    setTimeout(()=>URL.revokeObjectURL(dlUrl), 5000);
   } catch(err){
     console.error(err);
     showToast('Capture failed — try again');
