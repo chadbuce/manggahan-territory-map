@@ -313,6 +313,9 @@ async function captureSelected(){
     ctx.fillStyle = '#27ae60';
     ctx.fillText('Territories: ' + terList, mapW/2, HEADER*0.80);
     ctx.fillStyle = '#2c3e50';
+    // white background behind map (prevents transparent areas from rendering black on mobile)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, HEADER, mapW, mapH);
     // — step 1: whole map in grayscale —
     const baseImg = await loadImage(svgUrl);
     try { await baseImg.decode(); } catch(e){}
