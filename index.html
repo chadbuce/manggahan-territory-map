@@ -300,28 +300,15 @@ async function captureSelected(){
     const layer = layers[activeMap].el;
     const svgUrl = layer.querySelector('img.map-svg-img').src;
     const overlay = layer.querySelector('svg.map-interactive');
-    const selZones = [...overlay.querySelectorAll('.territory-zone.selected')];
-    if(selZones.length === 0){ showToast('No selected zones found'); return; }
-    // bounding box of selected zones + padding
-    let bb = null;
-    selZones.forEach(z => {
-      const b = z.getBBox();
-      if(!bb) bb = {x:b.x, y:b.y, x2:b.x+b.width, y2:b.y+b.height};
-      else { bb.x=Math.min(bb.x,b.x); bb.y=Math.min(bb.y,b.y); bb.x2=Math.max(bb.x2,b.x+b.width); bb.y2=Math.max(bb.y2,b.y+b.height); }
-    });
     const vb = overlay.viewBox.baseVal;
-    const padX = (bb.x2-bb.x)*0.15, padY = (bb.y2-bb.y)*0.15;
-    const rx = Math.max(0, bb.x - padX), ry = Math.max(0, bb.y - padY);
-    let rw = Math.min(vb.width - rx, (bb.x2-bb.x) + padX*2);
-    let rh = Math.min(vb.height - ry, (bb.y2-bb.y) + padY*2);
-    if(!isFinite(rw) || !isFinite(rh) || rw <= 0 || rh <= 0){ rx=0; ry=0; rw=vb.width; rh=vb.height; }
     const SCALE = 3;
-    const mapW = Math.min(2400, Math.round(rw*SCALE));
-    const mapH = Math.round(mapW * rh / rw);
+    const mapW = Math.min(2400, Math.round(vb.width*SCALE));
+    const mapH = Math.round(mapW * vb.height / vb.width);
     const HEADER = Math.round(mapW * 0.19);
     const canvas = document.createElement('canvas');
     canvas.width = mapW; canvas.height = mapH + HEADER;
     const ctx = canvas.getContext('2d');
+    // — 3-line header —
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, mapW, HEADER);
     ctx.fillStyle = '#2c3e50';
@@ -336,11 +323,27 @@ async function captureSelected(){
     ctx.fillStyle = '#27ae60';
     ctx.fillText('Territories: ' + terList, mapW/2, HEADER*0.80);
     ctx.fillStyle = '#2c3e50';
+    // — whole map, full color —
     const baseImg = await loadImage(svgUrl);
     try { await baseImg.decode(); } catch(e){}
-    ctx.drawImage(baseImg, rx, ry, rw, rh, 0, HEADER, mapW, mapH);
+    ctx.drawImage(baseImg, 0, 0, vb.width, vb.height, 0, HEADER, mapW, mapH);
+    // — grayscale only the unselected zones via canvas saturation composite —
+    const clone = overlay.cloneNode(true);
+    clone.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
+    clone.setAttribute('width', mapW); clone.setAttribute('height', mapH);
+    clone.querySelectorAll('path:not(.territory-zone), text, tspan').forEach(el => { el.style.display='none'; });
+    clone.querySelectorAll('.territory-zone').forEach(z => {
+      if(z.classList.contains('selected')){ z.style.display='none'; }
+      else { z.style.display=''; z.style.fill='#888'; z.style.mixBlendMode='normal'; }
+    });
+    const grayUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], {type:'image/svg+xml;charset=utf-8'}));
+    const grayImg = await loadImage(grayUrl);
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.drawImage(grayImg, 0, HEADER, mapW, mapH);
+    ctx.globalCompositeOperation = 'source-over';
+    URL.revokeObjectURL(grayUrl);
+    // — PNG: save + share —
     lastPngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    // auto-attempt download (works on desktop; may be blocked on mobile after async)
     try { doDownload(lastPngBlob); } catch(e){}
     showToast('✅ Ready — tap Save/Share');
     document.getElementById('savePanel').classList.add('show');
@@ -349,15 +352,6 @@ async function captureSelected(){
     showToast('Capture failed — try again');
   }
 }
-const _sb = document.getElementById('saveBtn');
-if(_sb) _sb.addEventListener('click', async () => {
-  if(lastPngBlob){ showToast('💾 Saving…'); doDownload(lastPngBlob); await doShare(lastPngBlob); showToast('✅ Saved to Downloads'); }
-  document.getElementById('savePanel').classList.remove('show');
-});
-const _sc = document.getElementById('saveClose');
-if(_sc) _sc.addEventListener('click', () => {
-  document.getElementById('savePanel').classList.remove('show');
-});
 document.getElementById('btnCamera').addEventListener('click', captureSelected);
 
 /* === LIVE DATE === */
