@@ -125,6 +125,7 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   <h3 id="ipTitle">—</h3>
   <div id="ipBody"></div>
 </div>
+<div class="save-panel" id="savePanel"><p>✅ Image ready — tap to save</p><button id="saveBtn">💾 Save / Share</button><button class="close-save" id="saveClose">✕</button></div>
 <script>
 const COLOR_MAP = {
   '#b82a29':{n:1, s:'Commonwealth Avenue, Vilongco'},
@@ -311,12 +312,13 @@ async function captureSelected(){
     const vb = overlay.viewBox.baseVal;
     const padX = (bb.x2-bb.x)*0.15, padY = (bb.y2-bb.y)*0.15;
     const rx = Math.max(0, bb.x - padX), ry = Math.max(0, bb.y - padY);
-    const rw = Math.min(vb.width - rx, (bb.x2-bb.x) + padX*2);
-    const rh = Math.min(vb.height - ry, (bb.y2-bb.y) + padY*2);
+    let rw = Math.min(vb.width - rx, (bb.x2-bb.x) + padX*2);
+    let rh = Math.min(vb.height - ry, (bb.y2-bb.y) + padY*2);
+    if(!isFinite(rw) || !isFinite(rh) || rw <= 0 || rh <= 0){ rx=0; ry=0; rw=vb.width; rh=vb.height; }
     const SCALE = 3;
     const mapW = Math.min(2400, Math.round(rw*SCALE));
     const mapH = Math.round(mapW * rh / rw);
-    const HEADER = Math.round(mapW * 0.13);
+    const HEADER = Math.round(mapW * 0.19);
     const canvas = document.createElement('canvas');
     canvas.width = mapW; canvas.height = mapH + HEADER;
     const ctx = canvas.getContext('2d');
@@ -324,12 +326,18 @@ async function captureSelected(){
     ctx.fillRect(0, 0, mapW, HEADER);
     ctx.fillStyle = '#2c3e50';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `bold ${Math.round(HEADER*0.34)}px Segoe UI, Roboto, sans-serif`;
-    ctx.fillText('Ito Ang Gagawin Ngayon', mapW/2, HEADER*0.36);
-    ctx.font = `${Math.round(HEADER*0.24)}px Segoe UI, Roboto, sans-serif`;
+    ctx.font = `bold ${Math.round(HEADER*0.26)}px Segoe UI, Roboto, sans-serif`;
+    ctx.fillText('Ito Ang Gagawin Ngayon', mapW/2, HEADER*0.24);
+    ctx.font = `${Math.round(HEADER*0.19)}px Segoe UI, Roboto, sans-serif`;
     const dateStr = new Date().toLocaleDateString('en-US', {timeZone:'Asia/Manila', month:'2-digit', day:'2-digit', year:'numeric'});
-    ctx.fillText(dateStr, mapW/2, HEADER*0.72);
+    ctx.fillText(dateStr, mapW/2, HEADER*0.52);
+    const terList = [...selectedSet].sort((a,b)=>TER_INFO[a].num-TER_INFO[b].num).join(', ');
+    ctx.font = `${Math.round(HEADER*0.16)}px Segoe UI, Roboto, sans-serif`;
+    ctx.fillStyle = '#27ae60';
+    ctx.fillText('Territories: ' + terList, mapW/2, HEADER*0.80);
+    ctx.fillStyle = '#2c3e50';
     const baseImg = await loadImage(svgUrl);
+    try { await baseImg.decode(); } catch(e){}
     ctx.drawImage(baseImg, rx, ry, rw, rh, 0, HEADER, mapW, mapH);
     lastPngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     // auto-attempt download (works on desktop; may be blocked on mobile after async)
@@ -343,7 +351,7 @@ async function captureSelected(){
 }
 const _sb = document.getElementById('saveBtn');
 if(_sb) _sb.addEventListener('click', async () => {
-  if(lastPngBlob){ doDownload(lastPngBlob); await doShare(lastPngBlob); }
+  if(lastPngBlob){ showToast('💾 Saving…'); doDownload(lastPngBlob); await doShare(lastPngBlob); showToast('✅ Saved to Downloads'); }
   document.getElementById('savePanel').classList.remove('show');
 });
 const _sc = document.getElementById('saveClose');
@@ -439,6 +447,5 @@ viewport.addEventListener('click', e=>{ if(!e.target.closest('.territory-zone'))
 buildTapOverlay('manggahan.svg', layers.manggahan.el);
 buildTapOverlay('payatas.svg', layers.payatas.el);
 </script>
-<div class="save-panel" id="savePanel"><p>✅ Image ready — tap to save</p><button id="saveBtn">💾 Save / Share</button><button class="close-save" id="saveClose">✕</button></div>
 </body>
 </html>
