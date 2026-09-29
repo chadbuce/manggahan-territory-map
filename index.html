@@ -363,20 +363,18 @@ async function captureSelected(){
     URL.revokeObjectURL(txtUrl);
     // — save + share —
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    // mobile: share directly (skip download); desktop / fallback: save to Downloads
+    // share directly — no download
     const file = new File([pngBlob], 'selected-territories.png', {type:'image/png'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      showToast('Opening share…');
-      try {
-        await navigator.share({files:[file], title:'Selected Territories'});
+    showToast('Opening share…');
+    try {
+      if(navigator.share){
+        await navigator.share({files:[file], title:'Selected Territories', text:'Selected Territories'});
         showToast('✅ Shared');
-      } catch(e){
-        doDownload(pngBlob);
-        showToast('✅ Saved to Downloads');
+      } else {
+        showToast('Share not supported on this browser — use Chrome');
       }
-    } else {
-      doDownload(pngBlob);
-      showToast('✅ Saved to Downloads');
+    } catch(e){
+      showToast('Share cancelled or unavailable');
     }
   } catch(err){
     console.error(err);
