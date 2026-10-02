@@ -538,8 +538,11 @@ function clientToSvg(clientX, clientY){
            y: Math.max(0, Math.min(vb.height, (clientY-r.top)/r.height*vb.height)) };
 }
 let _dragging = false, _lastTap = 0;
+_marker.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
+_marker.addEventListener('mousedown', (e) => { e.stopPropagation(); });
 _marker.addEventListener('pointerdown', (e) => {
   e.stopPropagation();
+  if(e.target.id === 'markerLoc') return; // don't drag when editing the text field
   const now = Date.now();
   if(now - _lastTap < 300){ // double-tap → hide
     markerVisible[activeMap] = false; saveMarker(); renderMarker(); return;
