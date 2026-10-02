@@ -309,6 +309,11 @@ function showToast(msg){
 function loadImage(src){
   return new Promise((res, rej) => { const i = new Image(); i.crossOrigin='anonymous'; i.onload=()=>res(i); i.onerror=rej; i.src=src; });
 }
+function rrect(c, x, y, w, h, r){
+  c.beginPath(); c.moveTo(x+r, y);
+  c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r);
+  c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath();
+}
 async function captureSelected(){
   if(selectedSet.size === 0){ showToast('Tap one or more territories first'); return; }
   showToast('📷 Capturing…');
@@ -368,6 +373,35 @@ async function captureSelected(){
     const txtImg = await loadImage(txtUrl);
     ctx.drawImage(txtImg, 0, HEADER, mapW, mapH);
     URL.revokeObjectURL(txtUrl);
+    // step 4: meeting-place pin + its street-corner label panel
+    const mk = markerState[activeMap];
+    if(markerVisible[activeMap] && mk){
+      const k = mapW/800;                                   // screen-px -> canvas-px
+      const px = mk.x/vb.width*mapW, py = HEADER + mk.y/vb.height*mapH, r = 10*k;
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2);
+      ctx.fillStyle = '#ffffff'; ctx.fill();
+      ctx.lineWidth = 3*k; ctx.strokeStyle = '#c0392b'; ctx.stroke();
+      const loc = (markerLabel[activeMap]||'').trim();
+      if(loc){
+        const titleTxt = '📍 Meeting Place';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = `700 ${10.4*k}px Segoe UI, Roboto, sans-serif`;
+        const tw = ctx.measureText(titleTxt).width;
+        ctx.font = `${9.9*k}px Segoe UI, Roboto, sans-serif`;
+        const lw = ctx.measureText(loc).width;
+        const bw = Math.min(mapW-8*k, Math.max(100*k, tw+16*k, lw+16*k)), bh = 35*k;
+        const bx = Math.max(4*k, Math.min(mapW-bw-4*k, px-bw/2));
+        let by = py - r - 6*k - bh;
+        if(by < HEADER + 4*k) by = py + r + 6*k;            // not enough room above -> put below the pin
+        rrect(ctx, bx, by, bw, bh, 8*k);
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
+        ctx.lineWidth = k; ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.stroke();
+        ctx.font = `700 ${10.4*k}px Segoe UI, Roboto, sans-serif`;
+        ctx.fillStyle = '#c0392b'; ctx.fillText(titleTxt, bx+bw/2, by+10*k);
+        ctx.font = `${9.9*k}px Segoe UI, Roboto, sans-serif`;
+        ctx.fillStyle = '#333333'; ctx.fillText(loc, bx+bw/2, by+25*k);
+      }
+    }
     // share
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     const file = new File([pngBlob], 'selected-territories.png', {type:'image/png'});
@@ -516,7 +550,16 @@ function nearestStreetLabel(x, y){
     for(const p of s.pts){ const dd = Math.hypot(p.x-x, p.y-y); if(dd<d) d=dd; }
     if(!(s.t in best) || d<best[s.t]) best[s.t] = d;
   });
-  return Object.entries(best).sort((a,b)=>a[1]-b[1]).slice(0,2).map(e=>e[0]).join(' & ');
+  const names = Object.entries(best).sort((a,b)=>a[1]-b[1]).slice(0,2).map(e=>e[0]);
+  return names.length ? 'Corner ' + names.join(' & ') : '';
+}
+// size the label's text box to its content so the whole street text fits inside the panel
+const _mctx = document.createElement('canvas').getContext('2d');
+function fitLoc(){
+  const cs = getComputedStyle(_markerLoc);
+  _mctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const t = _markerLoc.value || _markerLoc.placeholder;
+  _markerLoc.style.width = Math.ceil(_mctx.measureText(t).width + 10) + 'px';
 }
 // wrapper pixels <-> SVG units (accounts for xMidYMid meet letterboxing)
 function fitInfo(ov){
@@ -537,6 +580,7 @@ function renderMarker(){
   _marker.classList.add('visible');
   applyMarkerTransform();
   if(document.activeElement !== _markerLoc) _markerLoc.value = markerLabel[activeMap] || '';
+  fitLoc();
 }
 // screen point -> SVG point, by inverting the wrapper's translate/scale/rotate
 function clientToSvg(cx, cy){
@@ -578,7 +622,7 @@ function endDrag(){
 }
 _marker.addEventListener('pointerup', endDrag);
 _marker.addEventListener('pointercancel', endDrag);
-_markerLoc.addEventListener('input',  () => { markerLabel[activeMap] = _markerLoc.value; });
+_markerLoc.addEventListener('input',  () => { markerLabel[activeMap] = _markerLoc.value; fitLoc(); });
 _markerLoc.addEventListener('change', () => { markerLabel[activeMap] = _markerLoc.value; saveMarker(); updateInfoPanel(); });
 
 document.getElementById('markerToggle').addEventListener('click', () => {
