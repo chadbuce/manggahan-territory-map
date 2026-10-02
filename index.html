@@ -525,13 +525,29 @@ function renderMarker(){
   const pos = markerState[activeMap];
   if(!pos || !markerVisible[activeMap] || !ov){ _marker.classList.remove('visible'); return; }
   const vb = ov.viewBox.baseVal;
-  _marker.style.left = (pos.x/vb.width*100) + '%';
-  _marker.style.top = (pos.y/vb.height*100) + '%';
+  // account for xMidYMid meet letterbox so the pin lands exactly on the SVG point
+  const cw = ov.clientWidth || 1, ch = ov.clientHeight || 1;
+  const scale = Math.min(cw/vb.width, ch/vb.height);
+  const offX = (cw - vb.width*scale)/2, offY = (ch - vb.height*scale)/2;
+  _marker.style.left = ((offX + pos.x*scale)/cw*100) + '%';
+  _marker.style.top = ((offY + pos.y*scale)/ch*100) + '%';
   _marker.classList.add('visible');
   _markerLoc.value = markerLabel[activeMap] || '';
 }
 function clientToSvg(clientX, clientY){
   const ov = layers[activeMap].el.querySelector('svg.map-interactive');
+  if(!ov) return {x:0,y:0};
+  try {
+    const pt = ov.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    const ctm = ov.getScreenCTM();
+    if(ctm){
+      const p = pt.matrixTransform(ctm.inverse());
+      const vb = ov.viewBox.baseVal;
+      return { x: Math.max(0, Math.min(vb.width, p.x)), y: Math.max(0, Math.min(vb.height, p.y)) };
+    }
+  } catch(e){}
+  // fallback linear mapping
   const r = ov.getBoundingClientRect();
   const vb = ov.viewBox.baseVal;
   return { x: Math.max(0, Math.min(vb.width, (clientX-r.left)/r.width*vb.width)),
@@ -585,15 +601,34 @@ document.getElementById('markerToggle').addEventListener('click', () => {
 function collectMarkerData(imported, mapKey){
   try {
     const pts = [];
-    imported.querySelectorAll('.territory-zone').forEach(z => {
-      const d = z.getAttribute('d'); if(!d) return;
-      const nums = d.match(/-?\d+(\.\d+)?/g); if(!nums) return;
-      for(let i=0; i+1<nums.length; i+=2){ pts.push({x: parseFloat(nums[i]), y: parseFloat(nums[i+1])}); }
-    });
+    // Prefer the explicit Corner_Points circles the user added (exact pin targets)
+    const cg = imported.querySelector('#Corner_Points');
+    if(cg){
+      cg.querySelectorAll('circle').forEach(c => {
+        const cx = parseFloat(c.getAttribute('cx')), cy = parseFloat(c.getAttribute('cy'));
+        if(!isNaN(cx) && !isNaN(cy)) pts.push({x: cx, y: cy});
+      });
+    }
+    // Fallback: extract vertices from territory zone paths when no explicit corners exist
+    if(pts.length === 0){
+      imported.querySelectorAll('.territory-zone').forEach(z => {
+        const d = z.getAttribute('d'); if(!d) return;
+        const nums = d.match(/-?\d+(\.\d+)?/g); if(!nums) return;
+        for(let i=0; i+1<nums.length; i+=2){ pts.push({x: parseFloat(nums[i]), y: parseFloat(nums[i+1])}); }
+      });
+    }
     markerCorners[mapKey] = pts;
     const sts = [];
     imported.querySelectorAll('text').forEach(t => {
-      try { const b = t.getBBox(); sts.push({t: (t.textContent||'').trim(), x: b.x+b.width/2, y: b.y+b.height/2}); } catch(e){}
+      const txt = (t.textContent||'').trim();
+      if(txt.length < 3) return; // skip single-letter curved labels and empty spans
+      let x = 0, y = 0, ok = false;
+      // prefer the explicit translate(...) anchor — works for rotated labels regardless of getBBox quirks
+      const tr = t.getAttribute('transform') || '';
+      const m = tr.match(/translate\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
+      if(m){ x = parseFloat(m[1]); y = parseFloat(m[2]); ok = true; }
+      if(!ok){ try { const b = t.getBBox(); x = b.x+b.width/2; y = b.y+b.height/2; ok = isFinite(x)&&isFinite(y)&&(b.width>0||b.height>0); } catch(e){} }
+      if(ok) sts.push({t: txt, x: x, y: y});
     });
     markerStreets[mapKey] = sts;
   } catch(e){}
