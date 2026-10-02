@@ -90,6 +90,15 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 .qr-modal p { font-size:0.78rem; color:#444; margin-bottom:8px; }
 .qr-modal .close-qr { background:#95a5a6; color:#fff; border:none; padding:6px 16px; border-radius:14px; cursor:pointer; font-size:0.75rem; }
 @media (max-width:480px){ .qr-btn { width:40px; height:40px; font-size:0.95rem; } }
+.map-marker { position:absolute; transform:translate(-50%,-50%); z-index:35; cursor:grab; touch-action:none; display:none; user-select:none; }
+.map-marker.visible { display:block; }
+.map-marker.dragging { cursor:grabbing; z-index:60; }
+.map-marker .m-label { background:rgba(255,255,255,0.88); border:1px solid rgba(0,0,0,0.15); border-radius:8px; padding:4px 8px; margin-bottom:5px; min-width:100px; text-align:center; box-shadow:0 1px 5px rgba(0,0,0,0.25); backdrop-filter:blur(4px); }
+.map-marker .m-title { font-size:0.65rem; font-weight:700; color:#c0392b; margin-bottom:2px; }
+.map-marker .m-loc { font-size:0.62rem; color:#333; width:100%; border:none; background:transparent; text-align:center; outline:none; font-family:inherit; }
+.map-marker .m-circle { width:20px; height:20px; border-radius:50%; background:#fff; border:3px solid #c0392b; margin:0 auto; box-shadow:0 1px 5px rgba(0,0,0,0.35); }
+.marker-toggle { width:42px; height:42px; border-radius:50%; border:none; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.18); font-size:1.05rem; cursor:pointer; margin-top:5px; align-self:center; }
+@media (max-width:480px){ .marker-toggle { width:40px; height:40px; font-size:0.95rem; } }
 </style>
 </head>
 <body>
@@ -108,7 +117,14 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
     <div id="weatherContent"><div class="weather-loading">Loading...</div></div>
   </div>
   <div class="map-viewport" id="mapViewport">
-    <div class="map-wrapper" id="mapWrapper">
+    <div class="map-wrapper" id="mapWrapper"><div class="map-marker" id="mapMarker">
+  <div class="m-label">
+    <div class="m-title">📍 Meeting Place</div>
+    <input class="m-loc" id="markerLoc" type="text" placeholder="Street corner" />
+  </div>
+  <div class="m-circle"></div>
+</div>
+
       <div id="manggahanLayer" class="map-layer" style="display:block;">
         <img src="manggahan.svg" class="map-svg-img" alt="Manggahan Territory Map" />
       </div>
@@ -128,6 +144,7 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   <div class="btn-row"><button class="btn" id="rotLeft">↺</button><button class="btn" id="rotRight">↻</button></div>
   <button class="btn reset-btn" id="resetBtn">Reset</button>
   <button class="qr-btn" id="qrBtn" title="QR Code">📱</button>
+  <button class="marker-toggle" id="markerToggle" title="Meeting Place Marker">📍</button>
 </div>
 <div class="info-panel" id="infoPanel">
   <span class="close-btn" id="closeInfo">×</span>
@@ -271,6 +288,7 @@ async function buildTapOverlay(svgUrl, layerEl){
     });
     // keep text elements visible (numbers/streets stay on top; same position as base = no visible double)
     imported.querySelectorAll('text, tspan').forEach(el => { el.style.pointerEvents='none'; });
+    collectMarkerData(imported, svgUrl.indexOf('manggahan')>=0 ? 'manggahan' : 'payatas');
     imported.querySelectorAll('image, use').forEach(el => { el.style.display='none'; });
     layerEl.appendChild(imported);
   } catch(err){ console.warn('Tap overlay could not load for '+svgUrl+':', err.message); }
@@ -430,6 +448,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     layers.payatas.el.style.display=activeMap==='payatas'?'block':'none';
     document.getElementById('mapSubtitle').textContent=layers[activeMap].subtitle;
     resetView();
+    loadMarker(); renderMarker();
   });
 });
 document.getElementById('zoomIn').onclick=()=>{ scale=Math.min(scale*1.4,6); updateTransform(); };
@@ -467,6 +486,115 @@ viewport.addEventListener('touchend', ()=>touchState=null);
 document.getElementById('closeInfo').onclick=clearSelection;
 viewport.addEventListener('click', e=>{ if(!e.target.closest('.territory-zone')) clearSelection(); });
 
+
+/* ============ MEETING PLACE MARKER ============ */
+const markerCorners = { manggahan: [], payatas: [] };      // territory block corner vertices (svg coords)
+const markerStreets = { manggahan: [], payatas: [] };      // street label positions
+const markerState = { manggahan: null, payatas: null };    // {x,y}
+const markerLabel = { manggahan: '', payatas: '' };
+const markerVisible = { manggahan: true, payatas: true };
+const _marker = document.getElementById('mapMarker');
+const _markerLoc = document.getElementById('markerLoc');
+function _lsKey(){ return 'meetingMarker_' + activeMap; }
+function saveMarker(){
+  try { localStorage.setItem(_lsKey(), JSON.stringify({x: markerState[activeMap], y: markerState[activeMap], label: markerLabel[activeMap], vis: markerVisible[activeMap]})); } catch(e){}
+}
+function loadMarker(){
+  try {
+    const raw = localStorage.getItem(_lsKey());
+    if(raw){ const d = JSON.parse(raw); markerState[activeMap]=d.x!=null?{x:d.x,y:d.y}:null; markerLabel[activeMap]=d.label||''; markerVisible[activeMap]=d.vis!==false; }
+  } catch(e){}
+}
+function nearestCorner(x, y){
+  const pts = markerCorners[activeMap];
+  if(!pts || pts.length===0) return {x, y};
+  let best=pts[0], bd=Infinity;
+  for(const p of pts){ const d=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y); if(d<bd){bd=d; best=p;} }
+  return best;
+}
+function nearestStreetLabel(x, y){
+  const sts = markerStreets[activeMap];
+  if(!sts || sts.length===0) return '';
+  const sorted = sts.map(s=>({t:s.t, d:(s.x-x)*(s.x-x)+(s.y-y)*(s.y-y)})).sort((a,b)=>a.d-b.d);
+  const names = [];
+  for(const s of sorted){ if(s.t && names.indexOf(s.t)<0){ names.push(s.t); if(names.length>=2) break; } }
+  return names.join(' & ');
+}
+function renderMarker(){
+  const ov = layers[activeMap].el.querySelector('svg.map-interactive');
+  const pos = markerState[activeMap];
+  if(!pos || !markerVisible[activeMap] || !ov){ _marker.classList.remove('visible'); return; }
+  const vb = ov.viewBox.baseVal;
+  _marker.style.left = (pos.x/vb.width*100) + '%';
+  _marker.style.top = (pos.y/vb.height*100) + '%';
+  _marker.classList.add('visible');
+  _markerLoc.value = markerLabel[activeMap] || '';
+}
+function clientToSvg(clientX, clientY){
+  const ov = layers[activeMap].el.querySelector('svg.map-interactive');
+  const r = ov.getBoundingClientRect();
+  const vb = ov.viewBox.baseVal;
+  return { x: Math.max(0, Math.min(vb.width, (clientX-r.left)/r.width*vb.width)),
+           y: Math.max(0, Math.min(vb.height, (clientY-r.top)/r.height*vb.height)) };
+}
+let _dragging = false, _lastTap = 0;
+_marker.addEventListener('pointerdown', (e) => {
+  e.stopPropagation();
+  const now = Date.now();
+  if(now - _lastTap < 300){ // double-tap → hide
+    markerVisible[activeMap] = false; saveMarker(); renderMarker(); return;
+  }
+  _lastTap = now;
+  _dragging = true; _marker.classList.add('dragging');
+  _marker.setPointerCapture(e.pointerId);
+});
+_marker.addEventListener('pointermove', (e) => {
+  if(!_dragging) return;
+  _marker.style.position = 'fixed';
+  _marker.style.left = e.clientX + 'px';
+  _marker.style.top = e.clientY + 'px';
+  _marker.classList.add('visible');
+});
+_marker.addEventListener('pointerup', (e) => {
+  if(!_dragging) return;
+  _dragging = false; _marker.classList.remove('dragging');
+  _marker.style.position = '';
+  const p = clientToSvg(e.clientX, e.clientY);
+  const snapped = nearestCorner(p.x, p.y);
+  markerState[activeMap] = snapped;
+  markerLabel[activeMap] = nearestStreetLabel(snapped.x, snapped.y);
+  saveMarker(); renderMarker();
+});
+_markerLoc.addEventListener('change', () => { markerLabel[activeMap] = _markerLoc.value; saveMarker(); });
+_markerLoc.addEventListener('input', () => { markerLabel[activeMap] = _markerLoc.value; });
+document.getElementById('markerToggle').addEventListener('click', () => {
+  markerVisible[activeMap] = !markerVisible[activeMap];
+  if(markerVisible[activeMap] && !markerState[activeMap]){
+    const ov = layers[activeMap].el.querySelector('svg.map-interactive');
+    const vb = ov.viewBox.baseVal;
+    markerState[activeMap] = {x: vb.width/2, y: vb.height/2};
+    markerLabel[activeMap] = nearestStreetLabel(vb.width/2, vb.height/2);
+  }
+  saveMarker(); renderMarker();
+});
+// collect corners + street labels during overlay build (called from buildTapOverlay)
+function collectMarkerData(imported, mapKey){
+  try {
+    const pts = [];
+    imported.querySelectorAll('.territory-zone').forEach(z => {
+      const d = z.getAttribute('d'); if(!d) return;
+      const nums = d.match(/-?\d+(\.\d+)?/g); if(!nums) return;
+      for(let i=0; i+1<nums.length; i+=2){ pts.push({x: parseFloat(nums[i]), y: parseFloat(nums[i+1])}); }
+    });
+    markerCorners[mapKey] = pts;
+    const sts = [];
+    imported.querySelectorAll('text').forEach(t => {
+      try { const b = t.getBBox(); sts.push({t: (t.textContent||'').trim(), x: b.x+b.width/2, y: b.y+b.height/2}); } catch(e){}
+    });
+    markerStreets[mapKey] = sts;
+  } catch(e){}
+}
+
 var _qrb = document.getElementById('qrBtn');
 if(_qrb) _qrb.addEventListener('click', () => {
   var _qri = document.getElementById('qrImg');
@@ -480,6 +608,7 @@ var _qrm2 = document.getElementById('qrModal');
 if(_qrm2) _qrm2.addEventListener('click', (e) => { if(e.target.id==='qrModal') e.currentTarget.classList.remove('show'); });
 buildTapOverlay('manggahan.svg', layers.manggahan.el);
 buildTapOverlay('payatas.svg', layers.payatas.el);
+loadMarker(); renderMarker();
 </script>
 </body>
 </html>
