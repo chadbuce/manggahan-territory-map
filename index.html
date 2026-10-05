@@ -830,12 +830,16 @@ if('serviceWorker' in navigator){
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const inApp = /FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\/|MicroMessenger|Snapchat|TikTok|; wv\)/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+  const desktopChromium = !isAndroid && !isIOS && /Chrome\/|Edg\//.test(ua);
   let deferred = null;
   function dismissedRecently(){ try { return Date.now() - Number(localStorage.getItem(KEY) || 0) < WEEK; } catch(e){ return false; } }
   function rememberDismiss(){ try { localStorage.setItem(KEY, String(Date.now())); } catch(e){} }
   function show(mode){
     $id('ibTitle').textContent = mode === 'inapp' ? 'Open in your browser to install' : 'Install Territory Map';
     $id('ibSub').textContent = mode === 'prompt' ? 'Opens like an app and works offline.'
+      : mode === 'manual' ? (isAndroid ? 'Tap ⋮ (top right), then “Install app” or “Add to Home screen”.'
+                                        : 'Click the install icon ⊕ in the address bar, or open ⋮ → “Install Territory Map”.')
       : mode === 'ios' ? 'Tap Share ⬆️ then “Add to Home Screen”.'
       : 'Tap ⋯ and choose “Open in Chrome” or “Open in Safari”, then install.';
     $id('ibInstall').style.display = mode === 'prompt' ? 'inline-block' : 'none';
@@ -846,6 +850,11 @@ if('serviceWorker' in navigator){
   if(inApp){ show('inapp'); }
   else if(isIOS){ show('ios'); }
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; show('prompt'); });
+  // Chrome often holds back beforeinstallprompt on a first visit. If it hasn't fired shortly after load,
+  // show the manual steps instead (it upgrades to a real Install button if the event arrives later).
+  if(!inApp && !isIOS && (isAndroid || desktopChromium)){
+    setTimeout(() => { if(!deferred && !banner.classList.contains('show')) show('manual'); }, 2500);
+  }
   window.addEventListener('appinstalled', () => { deferred = null; hide(); });
   $id('ibInstall').addEventListener('click', async () => {
     if(!deferred) return;
