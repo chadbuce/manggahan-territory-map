@@ -4,7 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Manggahan Congregation Territory Map</title>
-<!-- Re-add your original <link rel="icon"> and <link rel="apple-touch-icon"> lines here (they were base64 data URIs). -->
+<link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2c3e50">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Territory Map">
@@ -30,12 +34,27 @@ body.has-selection .territory-zone { fill:#888; mix-blend-mode:saturation; fill-
 body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:normal; }
 /* overlay copies of street names / numbers: hidden because the base image already draws them (prevents double vision) */
 .ov-label { visibility:hidden; pointer-events:none; }
-.weather-widget {
-  position:absolute; bottom:calc(74px + 50px + 8px); left:12px; width:170px;
-  background:rgba(255,255,255,0.75); backdrop-filter:blur(8px); border-radius:10px;
-  padding:8px 10px; box-shadow:0 2px 6px rgba(0,0,0,0.1); z-index:25;
-  font-size:0.75rem; color:#333; max-height:35vh; overflow-y:auto;
+/* bottom-left stack: weather on top, territory info below. Flow layout = they can never overlap */
+.panel-stack {
+  position:absolute; left:12px; bottom:calc(12px + 50px); width:170px; max-height:calc(100% - 70px);
+  display:flex; flex-direction:column; gap:8px; z-index:25; pointer-events:none;
 }
+.panel-stack > * { pointer-events:auto; }
+.weather-widget {
+  position:relative; flex:0 1 auto; min-height:0; width:100%;
+  background:rgba(255,255,255,0.75); backdrop-filter:blur(8px); border-radius:10px;
+  padding:8px 10px; box-shadow:0 2px 6px rgba(0,0,0,0.1);
+  font-size:0.75rem; color:#333; max-height:35vh; overflow-y:auto; cursor:pointer;
+}
+.weather-widget:not(.compact) h4::after { content:' ▾'; color:#999; }
+/* compact chip while territories are selected: tap to expand */
+.weather-widget.compact { padding:5px 10px; overflow:hidden; }
+.weather-widget.compact h4, .weather-widget.compact .weather-date, .weather-widget.compact .weather-detail,
+.weather-widget.compact .weather-forecast-title, .weather-widget.compact .forecast-row { display:none; }
+.weather-widget.compact #weatherContent { display:flex; align-items:baseline; gap:6px; }
+.weather-widget.compact .weather-temp { margin:0; font-size:0.95rem; }
+.weather-widget.compact .weather-desc { margin:0; }
+.weather-widget.compact #weatherContent::after { content:'▴'; margin-left:auto; color:#999; font-size:0.65rem; }
 .weather-widget h4 { font-size:0.72rem; color:#2c3e50; margin-bottom:2px; font-weight:600; border-bottom:1px solid rgba(0,0,0,0.08); padding-bottom:2px; }
 .weather-date { font-size:0.65rem; color:#666; margin-bottom:4px; }
 .weather-temp { font-size:1.1rem; font-weight:700; color:#e67e22; margin:2px 0; line-height:1.2; }
@@ -53,20 +72,20 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 .fullscreen-btn { font-size:0.9rem; margin-bottom:2px; }
 .camera-btn { font-size:1.05rem; margin-bottom:2px; }
 .camera-btn:active { transform:scale(.92); }
-.qr-btn { font-size:1.05rem; margin-top:2px; align-self:center; }
-.marker-toggle { font-size:1.05rem; margin-top:5px; align-self:center; }
+.qr-btn { font-size:1.05rem; }
+.marker-toggle { font-size:1.05rem; }
 .btn-row { display:flex; gap:5px; justify-content:center; }
 .reset-btn { width:90px; border-radius:21px; font-weight:bold; color:#27ae60; align-self:flex-end; font-size:0.75rem; }
 .info-panel {
-  position:absolute; bottom:calc(12px + 50px); left:12px; width:170px; background:#fff; border-radius:10px;
+  position:relative; flex:0 0 auto; display:none; width:100%; background:#fff; border-radius:10px;
   padding:10px 12px; box-shadow:0 3px 10px rgba(0,0,0,0.2);
-  transform:translateY(120%); transition:transform 0.25s ease; z-index:20;
 }
-.info-panel.show { transform:translateY(0); }
+.info-panel.show { display:block; animation:ipIn .25s ease; }
+@keyframes ipIn { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
 .info-panel h3 { font-size:0.85rem; color:#27ae60; margin-bottom:4px; }
 .info-panel p { font-size:0.72rem; color:#555; margin:2px 0; line-height:1.3; }
 .info-panel .color-swatch { display:inline-block; width:11px; height:11px; border-radius:2px; border:1px solid #999; vertical-align:middle; margin-right:5px; flex-shrink:0; }
-.info-panel .sel-list { max-height:110px; overflow-y:auto; margin-top:4px; }
+.info-panel .sel-list { max-height:min(140px, 24vh); overflow-y:auto; margin-top:4px; }
 .info-panel .sel-item { display:flex; align-items:center; gap:5px; padding:2px 0; border-bottom:1px dotted #eee; font-size:0.72rem; color:#333; }
 .close-btn { position:absolute; top:6px; right:8px; font-size:0.95rem; cursor:pointer; color:#888; }
 .camera-toast {
@@ -90,8 +109,10 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 @media (max-width:480px) {
   header { padding:8px 10px; } header h1 { font-size:0.88rem; }
   .tab { padding:8px 4px; font-size:0.8rem; }
-  .weather-widget { width:155px; padding:6px 8px; left:8px; bottom:calc(68px + 50px + 6px); max-height:32vh; }
-  .info-panel { width:155px; padding:8px 10px; left:8px; bottom:calc(10px + 50px); }
+  .panel-stack { width:155px; left:8px; bottom:calc(10px + 50px); gap:6px; }
+  .weather-widget { padding:6px 8px; max-height:30vh; }
+  .weather-widget.compact { padding:4px 8px; }
+  .info-panel { padding:8px 10px; }
   .info-panel h3 { font-size:0.8rem; } .info-panel p, .info-panel .sel-item { font-size:0.7rem; }
   .controls { right:8px; gap:5px; }
   .btn, .fullscreen-btn, .camera-btn, .qr-btn, .marker-toggle { width:40px; height:40px; font-size:0.95rem; }
@@ -109,10 +130,17 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   <div class="tab" data-map="payatas">Payatas</div>
 </div>
 <div class="map-container">
-  <div class="weather-widget" id="weatherWidget">
-    <h4>📍 QC Commonwealth</h4>
-    <div class="weather-date" id="liveDate"></div>
-    <div id="weatherContent"><div class="weather-loading">Loading...</div></div>
+  <div class="panel-stack">
+    <div class="weather-widget" id="weatherWidget" title="Tap to expand / collapse">
+      <h4>📍 QC Commonwealth</h4>
+      <div class="weather-date" id="liveDate"></div>
+      <div id="weatherContent"><div class="weather-loading">Loading...</div></div>
+    </div>
+    <div class="info-panel" id="infoPanel">
+      <span class="close-btn" id="closeInfo">×</span>
+      <h3 id="ipTitle">—</h3>
+      <div id="ipBody"></div>
+    </div>
   </div>
   <div class="map-viewport" id="mapViewport">
     <div class="map-wrapper" id="mapWrapper">
@@ -141,13 +169,10 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   <div class="btn-row"><button class="btn" id="zoomIn">+</button><button class="btn" id="zoomOut">−</button></div>
   <div class="btn-row"><button class="btn" id="rotLeft">↺</button><button class="btn" id="rotRight">↻</button></div>
   <button class="btn reset-btn" id="resetBtn">Reset</button>
-  <button class="qr-btn" id="qrBtn" title="QR Code">📱</button>
-  <button class="marker-toggle" id="markerToggle" title="Meeting Place Marker">📍</button>
-</div>
-<div class="info-panel" id="infoPanel">
-  <span class="close-btn" id="closeInfo">×</span>
-  <h3 id="ipTitle">—</h3>
-  <div id="ipBody"></div>
+  <div class="btn-row">
+    <button class="marker-toggle" id="markerToggle" title="Meeting Place Marker">📍</button>
+    <button class="qr-btn" id="qrBtn" title="QR Code">📱</button>
+  </div>
 </div>
 <div class="qr-modal" id="qrModal"><p>Scan to open this map</p><img id="qrImg" alt="QR code" /><br/><button class="close-qr" id="qrClose">Close</button></div>
 <script>
@@ -225,6 +250,16 @@ function getInheritedFill(el){
 
 /* ============ SELECTION + INFO PANEL ============ */
 const selectedSet = new Set();
+const weatherWidget = document.getElementById('weatherWidget');
+let weatherPinned = null, _prevSelSize = 0;          // null = auto (compact while selecting), true/false = user's choice
+function syncWeather(){
+  const compact = weatherPinned !== null ? !weatherPinned : selectedSet.size > 0;
+  weatherWidget.classList.toggle('compact', compact);
+}
+weatherWidget.addEventListener('click', () => {
+  weatherPinned = weatherWidget.classList.contains('compact');   // compact -> expand, expanded -> collapse
+  syncWeather();
+});
 function onTerritoryClick(e){
   e.stopPropagation();
   const ter = e.currentTarget.dataset.ter;
@@ -233,6 +268,8 @@ function onTerritoryClick(e){
 }
 function applySelection(){
   document.body.classList.toggle('has-selection', selectedSet.size > 0);
+  if((selectedSet.size === 0) !== (_prevSelSize === 0)) weatherPinned = null;   // selection started/ended -> back to auto
+  _prevSelSize = selectedSet.size; syncWeather();
   document.querySelectorAll('.territory-zone').forEach(z => {
     if(selectedSet.has(z.dataset.ter)) z.classList.add('selected'); else z.classList.remove('selected');
   });
