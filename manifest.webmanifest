@@ -1,6 +1,9 @@
 {
+  "id": "./",
   "name": "Manggahan Congregation Territory Map",
   "short_name": "Territory Map",
+  "description": "Interactive territory maps for Manggahan and Payatas with meeting place and sharing tools.",
+  "lang": "en",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

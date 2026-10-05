@@ -95,6 +95,15 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 }
 .camera-toast.show { opacity:1; }
 .camera-toast { z-index:95 !important; }
+.install-banner { display:none; align-items:center; gap:10px; padding:8px 10px; background:#fff; border-top:1px solid #ddd; flex-shrink:0; font-size:0.78rem; color:#2c3e50; }
+.install-banner.show { display:flex; }
+.install-banner img { width:36px; height:36px; border-radius:8px; flex-shrink:0; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+.install-banner .ib-text { flex:1; min-width:0; line-height:1.3; }
+.install-banner .ib-title { font-weight:700; }
+.install-banner .ib-sub { font-size:0.7rem; color:#666; }
+.install-banner button { border:none; border-radius:16px; padding:8px 14px; font-weight:600; font-size:0.78rem; cursor:pointer; }
+.install-banner #ibInstall { background:#27ae60; color:#fff; display:none; }
+.install-banner #ibClose { background:transparent; color:#888; font-size:1.1rem; padding:4px 8px; }
 .share-sheet { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(330px,92vw); max-height:92vh; overflow-y:auto;
   background:#fff; border-radius:14px; padding:14px; box-shadow:0 6px 28px rgba(0,0,0,.4); z-index:90; display:none; }
 .share-sheet.show { display:block; }
@@ -171,6 +180,12 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
       </div>
     </div>
   </div>
+</div>
+<div class="install-banner" id="installBanner">
+  <img src="icons/icon-192.png" alt="" />
+  <div class="ib-text"><div class="ib-title" id="ibTitle"></div><div class="ib-sub" id="ibSub"></div></div>
+  <button id="ibInstall">Install</button>
+  <button id="ibClose" title="Not now" aria-label="Not now">✕</button>
 </div>
 <div class="camera-toast" id="cameraToast">📷 Capturing…</div>
 <div class="controls">
@@ -804,6 +819,43 @@ var _qrc = document.getElementById('qrClose');
 if(_qrc) _qrc.addEventListener('click', () => { var m=document.getElementById('qrModal'); if(m) m.classList.remove('show'); });
 var _qrm2 = document.getElementById('qrModal');
 if(_qrm2) _qrm2.addEventListener('click', (e) => { if(e.target.id==='qrModal') e.currentTarget.classList.remove('show'); });
+
+/* ============ INSTALL AS APP ============ */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+(function(){
+  const banner = $id('installBanner'), KEY = 'installDismissed', WEEK = 7*24*3600*1000;
+  const ua = navigator.userAgent;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const inApp = /FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\/|MicroMessenger|Snapchat|TikTok|; wv\)/i.test(ua);
+  let deferred = null;
+  function dismissedRecently(){ try { return Date.now() - Number(localStorage.getItem(KEY) || 0) < WEEK; } catch(e){ return false; } }
+  function rememberDismiss(){ try { localStorage.setItem(KEY, String(Date.now())); } catch(e){} }
+  function show(mode){
+    $id('ibTitle').textContent = mode === 'inapp' ? 'Open in your browser to install' : 'Install Territory Map';
+    $id('ibSub').textContent = mode === 'prompt' ? 'Opens like an app and works offline.'
+      : mode === 'ios' ? 'Tap Share ⬆️ then “Add to Home Screen”.'
+      : 'Tap ⋯ and choose “Open in Chrome” or “Open in Safari”, then install.';
+    $id('ibInstall').style.display = mode === 'prompt' ? 'inline-block' : 'none';
+    banner.classList.add('show');
+  }
+  function hide(){ banner.classList.remove('show'); }
+  if(standalone || dismissedRecently()) return;
+  if(inApp){ show('inapp'); }
+  else if(isIOS){ show('ios'); }
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; show('prompt'); });
+  window.addEventListener('appinstalled', () => { deferred = null; hide(); });
+  $id('ibInstall').addEventListener('click', async () => {
+    if(!deferred) return;
+    deferred.prompt();
+    const choice = await deferred.userChoice.catch(() => ({outcome:'dismissed'}));
+    deferred = null; hide();
+    if(choice.outcome !== 'accepted') rememberDismiss();
+  });
+  $id('ibClose').addEventListener('click', () => { rememberDismiss(); hide(); });
+})();
 
 /* ============ START ============ */
 Promise.all([
