@@ -94,6 +94,17 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
   font-size:0.75rem; z-index:60; opacity:0; transition:opacity .3s; pointer-events:none;
 }
 .camera-toast.show { opacity:1; }
+.camera-toast { z-index:95 !important; }
+.share-sheet { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(330px,92vw); max-height:92vh; overflow-y:auto;
+  background:#fff; border-radius:14px; padding:14px; box-shadow:0 6px 28px rgba(0,0,0,.4); z-index:90; display:none; }
+.share-sheet.show { display:block; }
+.share-sheet .ss-title { font-weight:700; color:#2c3e50; font-size:0.9rem; margin-bottom:8px; }
+.share-sheet img { display:block; max-width:100%; max-height:90px; margin:0 auto 8px; border-radius:6px; border:1px solid #ddd; }
+.share-sheet textarea { width:100%; height:150px; resize:vertical; font-size:0.74rem; line-height:1.35; padding:8px; border:1px solid #ccc; border-radius:8px; color:#222; }
+.share-sheet .ss-row { display:flex; gap:8px; margin-top:8px; }
+.share-sheet button { flex:1; padding:10px 6px; border:none; border-radius:10px; background:#27ae60; color:#fff; font-weight:600; font-size:0.8rem; cursor:pointer; }
+.share-sheet button.ss-sec { background:#ecf0f1; color:#2c3e50; }
+.share-sheet .ss-hint { font-size:0.65rem; color:#777; margin-top:8px; line-height:1.3; }
 .qr-modal { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:18px; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,.35); z-index:80; text-align:center; display:none; }
 .qr-modal.show { display:block; }
 .qr-modal img { width:200px; height:200px; display:block; margin:0 auto 6px; }
@@ -104,7 +115,8 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 .map-marker.dragging { cursor:grabbing; z-index:60; }
 .map-marker .m-label { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:rgba(255,255,255,0.88); border:1px solid rgba(0,0,0,0.15); border-radius:8px; padding:4px 8px; min-width:100px; text-align:center; box-shadow:0 1px 5px rgba(0,0,0,0.25); backdrop-filter:blur(4px); white-space:nowrap; }
 .map-marker .m-title { font-size:0.65rem; font-weight:700; color:#c0392b; margin-bottom:2px; }
-.map-marker .m-loc { font-size:0.62rem; color:#333; width:100%; border:none; background:transparent; text-align:center; outline:none; font-family:inherit; }
+.map-marker .m-loc { display:block; margin:0 auto; font-size:0.62rem; line-height:1.3; color:#333; border:none; background:transparent; text-align:center; outline:none; font-family:inherit;
+  resize:none; overflow-y:auto; white-space:pre-wrap; word-break:break-word; max-height:calc(0.62rem * 6.5); }
 .map-marker .m-circle { width:20px; height:20px; border-radius:50%; background:#fff; border:3px solid #c0392b; box-shadow:0 1px 5px rgba(0,0,0,0.35); }
 @media (max-width:480px) {
   header { padding:8px 10px; } header h1 { font-size:0.88rem; }
@@ -148,7 +160,7 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
         <div class="m-circle"></div>
         <div class="m-label">
           <div class="m-title">📍 Meeting Place</div>
-          <input class="m-loc" id="markerLoc" type="text" placeholder="Street corner (tap to edit)" />
+          <textarea class="m-loc" id="markerLoc" rows="1" placeholder="Street corner (tap to edit)"></textarea>
         </div>
       </div>
       <div id="manggahanLayer" class="map-layer" style="display:block;">
@@ -173,6 +185,14 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
     <button class="marker-toggle" id="markerToggle" title="Meeting Place Marker">📍</button>
     <button class="qr-btn" id="qrBtn" title="QR Code">📱</button>
   </div>
+</div>
+<div class="share-sheet" id="shareSheet">
+  <div class="ss-title">📤 Send to Messenger</div>
+  <img id="ssImg" alt="Snapshot preview" />
+  <textarea id="ssText"></textarea>
+  <div class="ss-row"><button id="ssSendText">1. Send text</button><button id="ssSendImg">2. Send image</button></div>
+  <div class="ss-row"><button class="ss-sec" id="ssCopy">Copy text</button><button class="ss-sec" id="ssClose">Close</button></div>
+  <p class="ss-hint">Pick your Messenger chat in the share menu. Send the text first so it arrives even without data, then the image. You can edit the text above before sending.</p>
 </div>
 <div class="qr-modal" id="qrModal"><p>Scan to open this map</p><img id="qrImg" alt="QR code" /><br/><button class="close-qr" id="qrClose">Close</button></div>
 <script>
@@ -279,7 +299,7 @@ function clearSelection(){ selectedSet.clear(); applySelection(); }
 function markerNote(){
   const l = markerLabel[activeMap];
   return (markerVisible[activeMap] && markerState[activeMap] && l)
-    ? `<p>📍 Meeting: <b>${l.replace(/</g,'&lt;')}</b></p>` : '';
+    ? `<p>📍 Meeting: <b>${l.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</b></p>` : '';
 }
 function updateInfoPanel(){
   const panel=document.getElementById('infoPanel'), title=document.getElementById('ipTitle'), body=document.getElementById('ipBody');
@@ -351,6 +371,51 @@ function rrect(c, x, y, w, h, r){
   c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r);
   c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath();
 }
+function manilaDate(){ return new Date().toLocaleDateString('en-US', {timeZone:'Asia/Manila', month:'2-digit', day:'2-digit', year:'numeric'}); }
+function buildMessageText(){
+  const L = ['📍 Ito Po Ang Gagawin Ngayon', manilaDate(), '', 'Territories:'];
+  [...selectedSet].sort((a,b)=>TER_INFO[a].num-TER_INFO[b].num).forEach(id => L.push(`${id} – ${TER_INFO[id].streets}`));
+  const loc = (markerLabel[activeMap]||'').replace(/[ \t]+\n/g,'\n').trim();
+  if(markerVisible[activeMap] && markerState[activeMap] && loc){ L.push('', '📍 Meeting Place:', loc); }
+  return L.join('\n');
+}
+let lastShot = null;
+const $id = id => document.getElementById(id);
+function openShareSheet(blob, text){
+  closeShareSheet();
+  lastShot = { blob, file: new File([blob], 'selected-territories.png', {type:'image/png'}), url: URL.createObjectURL(blob) };
+  $id('ssImg').src = lastShot.url; $id('ssText').value = text;
+  $id('shareSheet').classList.add('show');
+}
+function closeShareSheet(){
+  $id('shareSheet').classList.remove('show');
+  if(lastShot){ URL.revokeObjectURL(lastShot.url); lastShot = null; }
+}
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); showToast('✅ Text copied'); }
+  catch(e){
+    const ta = $id('ssText'); ta.focus(); ta.select();
+    try { document.execCommand('copy'); showToast('✅ Text copied'); } catch(_){ showToast('Select the text and copy it manually'); }
+  }
+}
+$id('ssSendText').addEventListener('click', async () => {
+  const text = $id('ssText').value;
+  if(!navigator.share){ copyText(text); return; }
+  try { await navigator.share({ text }); }
+  catch(e){ if(e.name !== 'AbortError'){ showToast('Share unavailable — text copied instead'); copyText(text); } }
+});
+$id('ssSendImg').addEventListener('click', async () => {
+  if(!lastShot) return;
+  try {
+    if(navigator.canShare && navigator.canShare({files:[lastShot.file]})) await navigator.share({files:[lastShot.file]});
+    else {
+      const a = document.createElement('a'); a.href = lastShot.url; a.download = 'selected-territories.png';
+      document.body.appendChild(a); a.click(); a.remove(); showToast('Image saved — attach it in Messenger');
+    }
+  } catch(e){ if(e.name !== 'AbortError') showToast('Could not share the image'); }
+});
+$id('ssCopy').addEventListener('click', () => copyText($id('ssText').value));
+$id('ssClose').addEventListener('click', closeShareSheet);
 async function captureSelected(){
   if(selectedSet.size === 0){ showToast('Tap one or more territories first'); return; }
   showToast('📷 Capturing…');
@@ -418,39 +483,42 @@ async function captureSelected(){
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2);
       ctx.fillStyle = '#ffffff'; ctx.fill();
       ctx.lineWidth = 3*k; ctx.strokeStyle = '#c0392b'; ctx.stroke();
-      const loc = (markerLabel[activeMap]||'').trim();
+      const loc = (markerLabel[activeMap]||'').replace(/\s+$/,'');
       if(loc){
-        const titleTxt = '📍 Meeting Place';
+        const titleTxt = '📍 Meeting Place', fs = 9.9*k, lh = 12.8*k, maxTW = 190*k;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = `${fs}px Segoe UI, Roboto, sans-serif`;
+        const rows = [];                                     // wrap each typed line to the panel width
+        loc.split('\n').forEach(line => {
+          let cur = '';
+          line.split(' ').forEach(w => {
+            const t = cur ? cur+' '+w : w;
+            if(cur && ctx.measureText(t).width > maxTW){ rows.push(cur); cur = w; } else cur = t;
+          });
+          rows.push(cur);
+        });
+        const lw = Math.max(...rows.map(t => ctx.measureText(t).width));
         ctx.font = `700 ${10.4*k}px Segoe UI, Roboto, sans-serif`;
         const tw = ctx.measureText(titleTxt).width;
-        ctx.font = `${9.9*k}px Segoe UI, Roboto, sans-serif`;
-        const lw = ctx.measureText(loc).width;
-        const bw = Math.min(mapW-8*k, Math.max(100*k, tw+16*k, lw+16*k)), bh = 35*k;
+        const bw = Math.min(mapW-8*k, Math.max(100*k, tw+16*k, lw+16*k));
+        const bh = 4*k + 12.5*k + 3*k + rows.length*lh + 4*k;
         const bx = Math.max(4*k, Math.min(mapW-bw-4*k, px-bw/2));
         let by = py - r - 6*k - bh;
         if(by < HEADER + 4*k) by = py + r + 6*k;            // not enough room above -> put below the pin
+        by = Math.min(by, canvas.height - bh - 4*k);
         rrect(ctx, bx, by, bw, bh, 8*k);
         ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fill();
         ctx.lineWidth = k; ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.stroke();
         ctx.font = `700 ${10.4*k}px Segoe UI, Roboto, sans-serif`;
-        ctx.fillStyle = '#c0392b'; ctx.fillText(titleTxt, bx+bw/2, by+10*k);
-        ctx.font = `${9.9*k}px Segoe UI, Roboto, sans-serif`;
-        ctx.fillStyle = '#333333'; ctx.fillText(loc, bx+bw/2, by+25*k);
+        ctx.fillStyle = '#c0392b'; ctx.fillText(titleTxt, bx+bw/2, by+4*k+6.25*k);
+        ctx.font = `${fs}px Segoe UI, Roboto, sans-serif`;
+        ctx.fillStyle = '#333333';
+        rows.forEach((t,i) => ctx.fillText(t, bx+bw/2, by+4*k+12.5*k+3*k+lh*(i+0.5)));
       }
     }
-    // share
+    // snapshot done -> open the "Send to Messenger" sheet (each send = its own tap, so browsers allow it)
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    const file = new File([pngBlob], 'selected-territories.png', {type:'image/png'});
-    showToast('Opening share…');
-    try {
-      if(navigator.share){
-        await navigator.share({files:[file], title:'Selected Territories', text:'Selected Territories'});
-        showToast('✅ Shared');
-      } else {
-        showToast('Share not supported on this browser — use Chrome');
-      }
-    } catch(e){ showToast('Share cancelled or unavailable'); }
+    openShareSheet(pngBlob, buildMessageText());
   } catch(err){
     console.error(err);
     showToast('Capture failed — try again');
@@ -592,11 +660,21 @@ function nearestStreetLabel(x, y){
 }
 // size the label's text box to its content so the whole street text fits inside the panel
 const _mctx = document.createElement('canvas').getContext('2d');
-function fitLoc(){
+function fitLoc(){                          // grow the message box to its text (max 200px wide, then wraps)
   const cs = getComputedStyle(_markerLoc);
   _mctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-  const t = _markerLoc.value || _markerLoc.placeholder;
-  _markerLoc.style.width = Math.ceil(_mctx.measureText(t).width + 10) + 'px';
+  const lines = (_markerLoc.value || _markerLoc.placeholder).split('\n');
+  const w = Math.max(...lines.map(l => _mctx.measureText(l).width));
+  _markerLoc.style.width = Math.min(200, Math.ceil(w + 12)) + 'px';
+  _markerLoc.style.height = 'auto';
+  const h = _markerLoc.scrollHeight;
+  _markerLoc.style.height = h ? h + 'px' : '';
+}
+// moving the pin replaces only line 1 (the corner); lines the user added below are kept
+function mergeCorner(old, corner){
+  if(!corner) return old || '';
+  if(!old) return corner;
+  const lines = old.split('\n'); lines[0] = corner; return lines.join('\n');
 }
 // wrapper pixels <-> SVG units (accounts for xMidYMid meet letterboxing)
 function fitInfo(ov){
@@ -654,7 +732,7 @@ function endDrag(){
   if(!_dragPos) return;                                  // plain tap, nothing moved
   const sn = nearestCorner(_dragPos.x, _dragPos.y); _dragPos = null;
   markerState[activeMap] = sn;
-  markerLabel[activeMap] = nearestStreetLabel(sn.x, sn.y) || markerLabel[activeMap];
+  markerLabel[activeMap] = mergeCorner(markerLabel[activeMap], nearestStreetLabel(sn.x, sn.y));
   saveMarker(); renderMarker(); updateInfoPanel();
 }
 _marker.addEventListener('pointerup', endDrag);
@@ -670,7 +748,7 @@ document.getElementById('markerToggle').addEventListener('click', () => {
     if(ov){
       const vb = ov.viewBox.baseVal;
       const sn = nearestCorner(vb.width/2, vb.height/2);
-      markerState[activeMap] = sn; markerLabel[activeMap] = nearestStreetLabel(sn.x, sn.y);
+      markerState[activeMap] = sn; markerLabel[activeMap] = mergeCorner(markerLabel[activeMap], nearestStreetLabel(sn.x, sn.y));
     }
   }
   saveMarker(); renderMarker(); updateInfoPanel();
