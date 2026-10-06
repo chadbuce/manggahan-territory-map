@@ -104,13 +104,13 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 .install-banner button { border:none; border-radius:16px; padding:8px 14px; font-weight:600; font-size:0.78rem; cursor:pointer; }
 .install-banner #ibInstall { background:#27ae60; color:#fff; display:none; }
 .install-banner #ibClose { background:transparent; color:#888; font-size:1.1rem; padding:4px 8px; }
-.compass { position:absolute; top:10px; right:10px; width:48px; height:48px; padding:0; border:none; border-radius:50%; background:transparent; z-index:20; cursor:pointer;
+.compass { position:absolute; top:10px; left:10px; width:48px; height:48px; padding:0; border:none; border-radius:50%; background:transparent; z-index:20; cursor:pointer;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation; filter:drop-shadow(0 2px 4px rgba(0,0,0,.28)); user-select:none; }
 .compass svg { width:100%; height:100%; display:block; }
 .compass .c-bg { fill:rgba(255,255,255,.95); stroke:#d5d8dc; stroke-width:1.5; }
 .compass.faceup .c-bg { stroke:#27ae60; stroke-width:3.5; }
 .compass:active { transform:scale(.94); }
-@media (max-width:480px){ .compass { width:42px; height:42px; top:8px; right:8px; } }
+@media (max-width:480px){ .compass { width:42px; height:42px; top:8px; left:8px; } }
 .share-sheet { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(330px,92vw); max-height:92vh; overflow-y:auto;
   background:#fff; border-radius:14px; padding:14px; box-shadow:0 6px 28px rgba(0,0,0,.4); z-index:90; display:none; }
 .share-sheet.show { display:block; }
@@ -388,7 +388,9 @@ async function buildTapOverlay(svgUrl, layerEl){
     imported.querySelectorAll('text, tspan').forEach(el => el.classList.add('ov-label'));
     imported.querySelectorAll('image, use').forEach(el => { el.style.display='none'; });
     layerEl.appendChild(imported);
-    collectMarkerData(imported, svgUrl.indexOf('manggahan')>=0 ? 'manggahan' : 'payatas');
+    const _key = svgUrl.indexOf('manggahan')>=0 ? 'manggahan' : 'payatas';
+    collectMarkerData(imported, _key);
+    detectNorthArrow(imported, _key); updateCompass();
   } catch(err){ console.warn('Tap overlay could not load for '+svgUrl+':', err.message); }
 }
 
@@ -551,19 +553,6 @@ async function captureSelected(){
         rows.forEach((t,i) => ctx.fillText(t, bx+bw/2, by+4*k+12.5*k+3*k+lh*(i+0.5)));
       }
     }
-    // north arrow: the snapshot shows the map as drawn, so north leans MAP_TOP_BEARING° left of up
-    {
-      const rr = mapW*0.035, cx = mapW - rr*1.7, cy = HEADER + rr*1.7, a = -MAP_TOP_BEARING*Math.PI/180;
-      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fill();
-      ctx.lineWidth = rr*0.06; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.stroke();
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
-      ctx.beginPath(); ctx.moveTo(0, -rr*0.5); ctx.lineTo(rr*0.17, 0); ctx.lineTo(-rr*0.17, 0); ctx.closePath(); ctx.fillStyle = '#c0392b'; ctx.fill();
-      ctx.beginPath(); ctx.moveTo(0, rr*0.5); ctx.lineTo(rr*0.17, 0); ctx.lineTo(-rr*0.17, 0); ctx.closePath(); ctx.fillStyle = '#95a5a6'; ctx.fill();
-      ctx.restore();
-      ctx.fillStyle = '#c0392b'; ctx.font = `700 ${rr*0.34}px Segoe UI, Roboto, sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('N', cx + Math.sin(a)*rr*0.78, cy - Math.cos(a)*rr*0.78);
-    }
     // snapshot done -> open the "Send to Messenger" sheet (each send = its own tap, so browsers allow it)
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     openShareSheet(pngBlob, buildMessageText());
@@ -668,19 +657,38 @@ viewport.addEventListener('click', e=>{
 });
 
 /* ============ COMPASS ============ */
-// Compass bearing of the TOP of the map as drawn. True north therefore leans this many degrees to the LEFT of "up".
-// (If north should lean right instead, change the sign here.)
-const MAP_TOP_BEARING = 32.159;
+// North reference = the yellow north arrow drawn inside each map SVG (read when the map loads).
+// mapNorth = angle of that arrow, clockwise from straight up. 56.51 is the fallback if the arrow can't be found.
+const mapNorth = { manggahan: 56.51, payatas: 56.51 };
+const mapTop = () => -mapNorth[activeMap];            // compass bearing of the top of the map as drawn
+function detectNorthArrow(root, mapKey){
+  try {
+    for(const poly of root.querySelectorAll('polygon')){
+      if(getInheritedFill(poly) !== '#fff200') continue;                       // the yellow arrow fill
+      const n = (poly.getAttribute('points')||'').trim().split(/[\s,]+/).map(Number);
+      const P = []; for(let i=0; i+1<n.length; i+=2) P.push([n[i], n[i+1]]);
+      if(P.length > 1 && P[0][0] === P[P.length-1][0] && P[0][1] === P[P.length-1][1]) P.pop();
+      if(P.length !== 4) continue;                                             // arrowhead = 4 points, one notch
+      const cr = P.map((b, i) => { const a = P[(i+3)%4], c = P[(i+1)%4]; return (b[0]-a[0])*(c[1]-b[1]) - (b[1]-a[1])*(c[0]-b[0]); });
+      const pos = cr.filter(v => v > 0).length;
+      if(pos !== 1 && pos !== 3) continue;
+      const notch = cr.findIndex(v => (v > 0) === (pos === 1));                // the odd one out
+      const tip = P[(notch+2)%4], nt = P[notch];
+      const ang = Math.atan2(tip[0]-nt[0], -(tip[1]-nt[1])) * 180 / Math.PI;   // notch -> tip, clockwise from up
+      if(isFinite(ang)){ mapNorth[mapKey] = ang; return; }
+    }
+  } catch(e){}
+}
 const compassBtn = $id('compass'), cmpDial = $id('cmpDial'), cmpFace = $id('cmpFace');
 let faceUp = false, sensorOn = false, headingRaw = null, headingSm = null, _loop = null, _anim = null, _cDown = 0;
 const angDiff = (a, b) => (((a - b) % 360) + 540) % 360 - 180;           // shortest signed difference a-b
-const isNorthUp = () => Math.abs(angDiff(rotation, MAP_TOP_BEARING)) < 1.5;
+const isNorthUp = () => Math.abs(angDiff(rotation, mapTop())) < 1.5;
 
 function updateCompass(){
-  cmpDial.setAttribute('transform', `rotate(${rotation - MAP_TOP_BEARING})`);       // needle = map's north
+  cmpDial.setAttribute('transform', `rotate(${rotation - mapTop()})`);       // needle = map's north
   if(sensorOn && headingSm !== null){                                              // blue marker = where the phone faces
     cmpFace.style.display = '';
-    cmpFace.setAttribute('transform', `rotate(${headingSm - MAP_TOP_BEARING + rotation})`);
+    cmpFace.setAttribute('transform', `rotate(${headingSm - mapTop() + rotation})`);
   } else cmpFace.style.display = 'none';
   compassBtn.classList.toggle('faceup', faceUp);
 }
@@ -721,7 +729,7 @@ function sensorTick(){
   const d = angDiff(headingRaw, headingSm);
   if(Math.abs(d) > 1.2) headingSm += d * 0.18;                      // smoothing + dead-band so the map doesn't jitter
   if(faceUp){
-    const dr = angDiff(MAP_TOP_BEARING - headingSm, rotation);
+    const dr = angDiff(mapTop() - headingSm, rotation);
     rotation += Math.abs(dr) < 0.2 ? dr : dr * 0.2;                 // ease toward "facing direction is up"
     updateTransform();
   } else updateCompass();
@@ -755,7 +763,7 @@ function stopFaceUp(){ if(!faceUp) return; faceUp = false; updateCompass(); }
 function toggleFaceUp(){ if(faceUp){ stopFaceUp(); showToast('Face-up mode off'); } else startFaceUp(); }
 function tapCompass(){
   if(faceUp){ toggleFaceUp(); return; }
-  if(!isNorthUp()){ animateRotation(MAP_TOP_BEARING); showToast('North is up'); return; }
+  if(!isNorthUp()){ animateRotation(mapTop()); showToast('North is up'); return; }
   toggleFaceUp();
 }
 compassBtn.addEventListener('pointerdown', () => { _cDown = Date.now(); });
