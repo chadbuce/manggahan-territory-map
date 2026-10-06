@@ -104,6 +104,13 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
 .install-banner button { border:none; border-radius:16px; padding:8px 14px; font-weight:600; font-size:0.78rem; cursor:pointer; }
 .install-banner #ibInstall { background:#27ae60; color:#fff; display:none; }
 .install-banner #ibClose { background:transparent; color:#888; font-size:1.1rem; padding:4px 8px; }
+.compass { position:absolute; top:10px; right:10px; width:48px; height:48px; padding:0; border:none; border-radius:50%; background:transparent; z-index:20; cursor:pointer;
+  -webkit-tap-highlight-color:transparent; touch-action:manipulation; filter:drop-shadow(0 2px 4px rgba(0,0,0,.28)); user-select:none; }
+.compass svg { width:100%; height:100%; display:block; }
+.compass .c-bg { fill:rgba(255,255,255,.95); stroke:#d5d8dc; stroke-width:1.5; }
+.compass.faceup .c-bg { stroke:#27ae60; stroke-width:3.5; }
+.compass:active { transform:scale(.94); }
+@media (max-width:480px){ .compass { width:42px; height:42px; top:8px; right:8px; } }
 .share-sheet { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(330px,92vw); max-height:92vh; overflow-y:auto;
   background:#fff; border-radius:14px; padding:14px; box-shadow:0 6px 28px rgba(0,0,0,.4); z-index:90; display:none; }
 .share-sheet.show { display:block; }
@@ -163,6 +170,19 @@ body.has-selection .territory-zone.selected { fill:transparent; mix-blend-mode:n
       <div id="ipBody"></div>
     </div>
   </div>
+  <button class="compass" id="compass" aria-label="Compass. Tap: north up. Tap again or long-press: face-up mode" title="Tap: north up · Tap again / hold: face-up mode">
+    <svg viewBox="-32 -32 64 64" aria-hidden="true">
+      <circle class="c-bg" r="27"/>
+      <g id="cmpDial">
+        <path d="M0,-15 L5,0 L-5,0 Z" fill="#c0392b"/><path d="M0,15 L5,0 L-5,0 Z" fill="#95a5a6"/>
+        <text x="0" y="-18.5" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="700" fill="#c0392b">N</text>
+        <text x="20" y="0.5" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="#7f8c8d">E</text>
+        <text x="0" y="19.5" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="#7f8c8d">S</text>
+        <text x="-20" y="0.5" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="#7f8c8d">W</text>
+      </g>
+      <g id="cmpFace" style="display:none"><path d="M0,-31 L4.5,-24 L-4.5,-24 Z" fill="#2980b9"/></g>
+    </svg>
+  </button>
   <div class="map-viewport" id="mapViewport">
     <div class="map-wrapper" id="mapWrapper">
       <div class="map-marker" id="mapMarker">
@@ -531,6 +551,19 @@ async function captureSelected(){
         rows.forEach((t,i) => ctx.fillText(t, bx+bw/2, by+4*k+12.5*k+3*k+lh*(i+0.5)));
       }
     }
+    // north arrow: the snapshot shows the map as drawn, so north leans MAP_TOP_BEARING° left of up
+    {
+      const rr = mapW*0.035, cx = mapW - rr*1.7, cy = HEADER + rr*1.7, a = -MAP_TOP_BEARING*Math.PI/180;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fill();
+      ctx.lineWidth = rr*0.06; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.stroke();
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(a);
+      ctx.beginPath(); ctx.moveTo(0, -rr*0.5); ctx.lineTo(rr*0.17, 0); ctx.lineTo(-rr*0.17, 0); ctx.closePath(); ctx.fillStyle = '#c0392b'; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, rr*0.5); ctx.lineTo(rr*0.17, 0); ctx.lineTo(-rr*0.17, 0); ctx.closePath(); ctx.fillStyle = '#95a5a6'; ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#c0392b'; ctx.font = `700 ${rr*0.34}px Segoe UI, Roboto, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('N', cx + Math.sin(a)*rr*0.78, cy - Math.cos(a)*rr*0.78);
+    }
     // snapshot done -> open the "Send to Messenger" sheet (each send = its own tap, so browsers allow it)
     const pngBlob = await new Promise(res => canvas.toBlob(res, 'image/png'));
     openShareSheet(pngBlob, buildMessageText());
@@ -578,8 +611,8 @@ const layers = {
 };
 let activeMap='manggahan', scale=1, posX=0, posY=0, rotation=0;
 const wrapper=document.getElementById('mapWrapper'), viewport=document.getElementById('mapViewport');
-function updateTransform(){ wrapper.style.transform=`translate(${posX}px, ${posY}px) scale(${scale}) rotate(${rotation}deg)`; applyMarkerTransform(); }
-function resetView(){ scale=1; posX=0; posY=0; rotation=0; updateTransform(); clearSelection(); }
+function updateTransform(){ wrapper.style.transform=`translate(${posX}px, ${posY}px) scale(${scale}) rotate(${rotation}deg)`; applyMarkerTransform(); updateCompass(); }
+function resetView(){ stopFaceUp(); scale=1; posX=0; posY=0; rotation=0; updateTransform(); clearSelection(); }
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -594,8 +627,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 document.getElementById('zoomIn').onclick=()=>{ scale=Math.min(scale*1.4,6); updateTransform(); };
 document.getElementById('zoomOut').onclick=()=>{ scale=Math.max(scale/1.4,0.6); updateTransform(); };
-document.getElementById('rotLeft').onclick=()=>{ rotation-=15; updateTransform(); };
-document.getElementById('rotRight').onclick=()=>{ rotation+=15; updateTransform(); };
+document.getElementById('rotLeft').onclick=()=>{ stopFaceUp(); rotation-=15; updateTransform(); };
+document.getElementById('rotRight').onclick=()=>{ stopFaceUp(); rotation+=15; updateTransform(); };
 document.getElementById('resetBtn').onclick=resetView;
 document.getElementById('fullscreenBtn').onclick=()=>{
   if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen)?.call(document.documentElement); }
@@ -619,7 +652,7 @@ viewport.addEventListener('touchmove', e=>{
   else if(touchState.mode==='multi' && e.touches.length===2){
     const [t1,t2]=[e.touches[0],e.touches[1]];
     scale=Math.max(0.6,Math.min(6,touchState.startScale*(getDist(t1,t2)/touchState.dist)));
-    rotation=touchState.startRot+(getAngle(t1,t2)-touchState.angle);
+    if(!faceUp) rotation=touchState.startRot+(getAngle(t1,t2)-touchState.angle);
     updateTransform();
   }
 },{passive:false});
@@ -633,6 +666,102 @@ viewport.addEventListener('click', e=>{
   if(e.target.closest('.territory-zone, .map-marker')) return;
   clearSelection();
 });
+
+/* ============ COMPASS ============ */
+// Compass bearing of the TOP of the map as drawn. True north therefore leans this many degrees to the LEFT of "up".
+// (If north should lean right instead, change the sign here.)
+const MAP_TOP_BEARING = 32.159;
+const compassBtn = $id('compass'), cmpDial = $id('cmpDial'), cmpFace = $id('cmpFace');
+let faceUp = false, sensorOn = false, headingRaw = null, headingSm = null, _loop = null, _anim = null, _cDown = 0;
+const angDiff = (a, b) => (((a - b) % 360) + 540) % 360 - 180;           // shortest signed difference a-b
+const isNorthUp = () => Math.abs(angDiff(rotation, MAP_TOP_BEARING)) < 1.5;
+
+function updateCompass(){
+  cmpDial.setAttribute('transform', `rotate(${rotation - MAP_TOP_BEARING})`);       // needle = map's north
+  if(sensorOn && headingSm !== null){                                              // blue marker = where the phone faces
+    cmpFace.style.display = '';
+    cmpFace.setAttribute('transform', `rotate(${headingSm - MAP_TOP_BEARING + rotation})`);
+  } else cmpFace.style.display = 'none';
+  compassBtn.classList.toggle('faceup', faceUp);
+}
+function animateRotation(target, ms = 350){
+  cancelAnimationFrame(_anim);
+  const start = rotation, delta = angDiff(target, start), t0 = performance.now();
+  const step = t => {
+    const k = Math.min(1, (t - t0) / ms);
+    rotation = start + delta * (1 - Math.pow(1 - k, 3)); updateTransform();
+    if(k < 1) _anim = requestAnimationFrame(step);
+  };
+  _anim = requestAnimationFrame(step);
+}
+function tiltHeading(alpha, beta, gamma){               // heading when the phone is held upright
+  const d = Math.PI/180, a = alpha*d, b = beta*d, g = gamma*d;
+  const vx = -Math.cos(a)*Math.sin(g) - Math.sin(a)*Math.sin(b)*Math.cos(g);
+  const vy = -Math.sin(a)*Math.sin(g) + Math.cos(a)*Math.sin(b)*Math.cos(g);
+  let h = Math.atan(vx / vy);
+  if(vy < 0) h += Math.PI; else if(vx < 0) h += 2*Math.PI;
+  return h * 180 / Math.PI;
+}
+function onOrient(e){
+  let h = null;
+  if(typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;       // iPhone
+  else if(e.alpha != null && (e.absolute === true || e.type === 'deviceorientationabsolute'))                       // Android
+    h = (e.beta != null && Math.abs(e.beta) > 65) ? tiltHeading(e.alpha, e.beta, e.gamma||0) : (360 - e.alpha);
+  if(h === null) return;
+  const so = (screen.orientation && screen.orientation.angle) || 0;
+  headingRaw = (((h + so) % 360) + 360) % 360;
+}
+function attachSensor(){ window.addEventListener('deviceorientationabsolute', onOrient, true); window.addEventListener('deviceorientation', onOrient, true); }
+function detachSensor(){ window.removeEventListener('deviceorientationabsolute', onOrient, true); window.removeEventListener('deviceorientation', onOrient, true); }
+document.addEventListener('visibilitychange', () => { if(!sensorOn) return; if(document.hidden) detachSensor(); else attachSensor(); });
+
+function sensorTick(){
+  if(headingRaw === null) return;
+  if(headingSm === null) headingSm = headingRaw;
+  const d = angDiff(headingRaw, headingSm);
+  if(Math.abs(d) > 1.2) headingSm += d * 0.18;                      // smoothing + dead-band so the map doesn't jitter
+  if(faceUp){
+    const dr = angDiff(MAP_TOP_BEARING - headingSm, rotation);
+    rotation += Math.abs(dr) < 0.2 ? dr : dr * 0.2;                 // ease toward "facing direction is up"
+    updateTransform();
+  } else updateCompass();
+}
+function ensureLoop(){
+  if(_loop) return;
+  const tick = () => { if(!sensorOn){ _loop = null; return; } sensorTick(); _loop = requestAnimationFrame(tick); };
+  _loop = requestAnimationFrame(tick);
+}
+async function enableSensor(){
+  if(sensorOn) return true;
+  try {
+    if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      const r = await DeviceOrientationEvent.requestPermission();   // iPhone: must come straight from a tap
+      if(r !== 'granted'){ showToast('Compass permission was denied'); return false; }
+    }
+  } catch(e){ showToast('Compass permission unavailable'); return false; }
+  if(!('DeviceOrientationEvent' in window)){ showToast('This device has no compass sensor'); return false; }
+  sensorOn = true; headingRaw = null; headingSm = null; attachSensor(); ensureLoop();
+  setTimeout(() => {
+    if(sensorOn && headingRaw === null){ sensorOn = false; faceUp = false; detachSensor(); updateCompass(); showToast('Compass sensor not responding'); }
+  }, 3000);
+  return true;
+}
+async function startFaceUp(){
+  cancelAnimationFrame(_anim);
+  if(!(await enableSensor())) return;
+  faceUp = true; updateCompass(); showToast('Face-up mode on — tap the compass to stop');
+}
+function stopFaceUp(){ if(!faceUp) return; faceUp = false; updateCompass(); }
+function toggleFaceUp(){ if(faceUp){ stopFaceUp(); showToast('Face-up mode off'); } else startFaceUp(); }
+function tapCompass(){
+  if(faceUp){ toggleFaceUp(); return; }
+  if(!isNorthUp()){ animateRotation(MAP_TOP_BEARING); showToast('North is up'); return; }
+  toggleFaceUp();
+}
+compassBtn.addEventListener('pointerdown', () => { _cDown = Date.now(); });
+compassBtn.addEventListener('pointerup', () => { (Date.now() - _cDown >= 600) ? toggleFaceUp() : tapCompass(); });   // long-press = face-up on/off
+compassBtn.addEventListener('contextmenu', e => e.preventDefault());
+updateCompass();
 
 /* ============ MEETING PLACE MARKER ============ */
 const markerCorners = { manggahan: [], payatas: [] };
